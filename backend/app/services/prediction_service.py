@@ -32,11 +32,23 @@ class PredictionService:
 
         latest = self.traffic.latest(payload.intersection_id, limit=1)
         latest_count = latest[0].vehicle_count if latest else 0
+        latest_density = latest[0].density if latest else 0.0
+        latest_speed = latest[0].avg_speed if latest else None
+        latest_pcu = latest[0].pcu_total if latest and payload.pcu_total is None else payload.pcu_total
         target_time = datetime.now(UTC) + timedelta(minutes=payload.horizon_minutes)
 
         try:
             density, vehicle_count, version = self.predictor.predict(
-                payload.intersection_id, target_time, latest_count
+                payload.intersection_id,
+                target_time,
+                latest_count,
+                payload.weather_condition,
+                latest_pcu,
+                payload.direction,
+                latest_density,
+                latest_speed,
+                payload.hour_of_day,
+                payload.day_of_week,
             )
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc

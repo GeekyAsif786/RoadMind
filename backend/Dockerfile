@@ -14,6 +14,8 @@ COPY requirements.txt requirements-vision.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_YOLO" = "true" ]; then pip install --no-cache-dir -r requirements-vision.txt; fi
 
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 COPY app ./app
 
 EXPOSE 8000

@@ -25,7 +25,7 @@ class TrafficRepository:
         return list(self.db.scalars(statement).all())
 
     def history(self, since: datetime | None = None) -> list[TrafficObservation]:
-        statement = select(TrafficObservation).order_by(TrafficObservation.captured_at)
+        statement = select(TrafficObservation).order_by(TrafficObservation.captured_at.asc())
         if since:
             statement = statement.where(TrafficObservation.captured_at >= since)
         return list(self.db.scalars(statement).all())

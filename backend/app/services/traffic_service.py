@@ -24,14 +24,21 @@ class TrafficService:
 
         density = payload.density
         if density is None:
-            density = self.density.calculate(payload.vehicle_count, intersection.lanes)
+            density = self.density.calculate(
+                payload.vehicle_count,
+                intersection.lanes,
+                road_type=intersection.road_type,
+            )
 
         observation = TrafficObservation(
             intersection_id=payload.intersection_id,
+            direction=payload.direction,
             vehicle_count=payload.vehicle_count,
             density=density,
             avg_speed=payload.avg_speed,
             occupancy=payload.occupancy,
+            weather_condition=payload.weather_condition,
+            pcu_total=payload.pcu_total,
             source=payload.source,
             captured_at=payload.captured_at or datetime.now(UTC),
         )

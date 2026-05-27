@@ -22,7 +22,6 @@ OR intersection_id IN (
     '33333333-3333-3333-3333-333333333333'
 );
 
-DELETE FROM emergency_events
 WHERE intersection_id IN (
     SELECT id FROM intersections
     WHERE name IN ('Central Avenue Junction', 'North Gate Signal', 'Metro Station Crossing')
