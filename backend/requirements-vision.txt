@@ -1,0 +1,3 @@
+# Optional production-grade YOLOv8 support.
+# Do not install this on a low-memory local Mac unless you specifically need YOLO.
+ultralytics==8.3.55

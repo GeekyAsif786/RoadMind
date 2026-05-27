@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+numpy==2.2.1
+opencv-python-headless==4.10.0.84
+scikit-learn==1.6.0
+joblib==1.4.2

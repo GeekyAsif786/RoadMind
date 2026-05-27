@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: traffic-postgres
+    environment:
+      POSTGRES_DB: traffic_manager
+      POSTGRES_USER: traffic
+      POSTGRES_PASSWORD: traffic
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traffic -d traffic_manager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: traffic-backend
+    environment:
+      APP_NAME: Smart Traffic Optimization System
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://traffic:traffic@postgres:5432/traffic_manager
+      AUTO_CREATE_TABLES: "true"
+      ENABLE_YOLO: "false"
+      YOLO_MODEL_PATH: yolov8n.pt
+      MODEL_DIR: /app/runtime_models
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-models:/app/runtime_models
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: traffic-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: traffic-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    depends_on:
+      - postgres
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+
+volumes:
+  postgres-data:
+  backend-models:
+  pgadmin-data:
