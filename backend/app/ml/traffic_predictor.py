@@ -1,11 +1,13 @@
 import json
 import logging
+import zoneinfo
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 import joblib
 import numpy as np
+from fastapi import HTTPException, status
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
 
@@ -13,6 +15,10 @@ from app.core.config import get_settings
 from app.models import TrafficObservation
 
 logger = logging.getLogger(__name__)
+IST = zoneinfo.ZoneInfo("Asia/Kolkata")
+MIN_TRAINING_SAMPLES = 200
+WEATHER_CODE_MAP = {"clear": 0, "light_rain": 1, "heavy_rain": 2, "fog": 3, "smog": 4}
+PEAK_HOUR_RANGES = ((7, 10), (17, 20))
 
 
 class IntersectionEncoder:
@@ -46,24 +52,19 @@ class TrafficPredictor:
         self._cached_version: str | None = None
 
     def train(self, observations: list[TrafficObservation]) -> tuple[str, int, float | None]:
-        if len(observations) < 8:
-            raise ValueError("At least 8 traffic observations are required to train the predictor")
+        if len(observations) < MIN_TRAINING_SAMPLES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Insufficient training data: {len(observations)} samples found, "
+                    f"minimum {MIN_TRAINING_SAMPLES} required. "
+                    "Log more observations before training."
+                ),
+            )
 
         logger.info("Training model on %d observations", len(observations))
         ordered_observations = sorted(observations, key=lambda row: row.captured_at)
-        features = np.array(
-            [
-                self._features(
-                    row.intersection_id,
-                    row.captured_at,
-                    row.vehicle_count,
-                    row.weather_condition,
-                    row.pcu_total,
-                    row.direction,
-                )
-                for row in ordered_observations
-            ]
-        )
+        features = self._build_features(ordered_observations)
         targets = np.array([[row.density, row.vehicle_count] for row in ordered_observations])
 
         model = RandomForestRegressor(
@@ -99,6 +100,10 @@ class TrafficPredictor:
         weather_condition: str = "clear",
         pcu_total: float | None = None,
         direction: str = "ALL",
+        density: float = 0.0,
+        avg_speed: float | None = None,
+        hour_of_day: int | None = None,
+        day_of_week: int | None = None,
     ) -> tuple[float, float, str]:
         logger.debug("Predicting for intersection=%s at %s", intersection_id, captured_at)
         model = self._load_model()
@@ -111,6 +116,10 @@ class TrafficPredictor:
                     weather_condition,
                     pcu_total,
                     direction,
+                    density,
+                    avg_speed,
+                    hour_of_day,
+                    day_of_week,
                 )
             ]
         )
@@ -139,23 +148,52 @@ class TrafficPredictor:
         weather_condition: str = "clear",
         pcu_total: float | None = None,
         direction: str = "ALL",
+        density: float = 0.0,
+        avg_speed: float | None = None,
+        hour_of_day: int | None = None,
+        day_of_week: int | None = None,
     ) -> list[float]:
         from app.core.india_calendar import is_indian_holiday
 
-        weather_map = {"clear": 0, "light_rain": 1, "heavy_rain": 2, "fog": 3, "smog": 4}
-        weather_code = weather_map.get(weather_condition, 0)
+        ist_time = captured_at.astimezone(IST)
+        hour = hour_of_day if hour_of_day is not None else ist_time.hour
+        dow = day_of_week if day_of_week is not None else ist_time.weekday()
+        is_peak = int(any(start <= hour < end for start, end in PEAK_HOUR_RANGES))
+        weather_code = WEATHER_CODE_MAP.get(weather_condition, 0)
         direction_map = {"ALL": 0, "N": 1, "S": 2, "E": 3, "W": 4, "NE": 5, "NW": 6, "SE": 7, "SW": 8}
         direction_code = direction_map.get(direction, 0)
         effective_count = pcu_total if pcu_total is not None else float(latest_vehicle_count)
 
         return [
             self.encoder.encode(intersection_id),
-            captured_at.hour,
-            captured_at.weekday(),
-            captured_at.minute // 15,
+            hour,
+            dow,
+            ist_time.minute // 15,
             effective_count,
             weather_code,
-            is_indian_holiday(captured_at.date()),
-            1 if captured_at.month in (6, 7, 8, 9) else 0,
+            is_indian_holiday(ist_time.date()),
+            1 if ist_time.month in (6, 7, 8, 9) else 0,
             direction_code,
+            float(latest_vehicle_count),
+            density,
+            pcu_total or 0.0,
+            avg_speed or 0.0,
+            is_peak,
         ]
+
+    def _build_features(self, observations: list[TrafficObservation]) -> np.ndarray:
+        rows = []
+        for obs in observations:
+            rows.append(
+                self._features(
+                    obs.intersection_id,
+                    obs.captured_at,
+                    obs.vehicle_count,
+                    obs.weather_condition,
+                    obs.pcu_total,
+                    obs.direction,
+                    obs.density,
+                    obs.avg_speed,
+                )
+            )
+        return np.array(rows, dtype=float)

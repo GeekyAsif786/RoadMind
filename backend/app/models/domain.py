@@ -24,6 +24,8 @@ class Intersection(Base, TimestampMixin):
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     lanes: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    road_type: Mapped[str] = mapped_column(String(20), nullable=False, default="urban")
+    # Allowed values: "urban", "highway", "service"
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="active")
 
     observations: Mapped[list["TrafficObservation"]] = relationship(back_populates="intersection")

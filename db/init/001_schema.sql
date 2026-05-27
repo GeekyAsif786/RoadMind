@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS intersections (
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
     lanes INTEGER NOT NULL DEFAULT 4,
+    road_type VARCHAR(20) NOT NULL DEFAULT 'urban' CHECK (road_type IN ('urban','highway','service')),
     status VARCHAR(40) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

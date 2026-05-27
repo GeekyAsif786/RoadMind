@@ -10,6 +10,7 @@ class IntersectionBase(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     lanes: int = Field(default=4, ge=1, le=16)
+    road_type: str = Field(default="urban", pattern=r"^(urban|highway|service)$")
     status: str = "active"
 
 
@@ -80,7 +81,7 @@ class SignalPhaseRead(BaseModel):
     id: UUID
     plan_id: UUID
     phase_number: int
-    direction: str
+    direction: str  # "N"|"S"|"E"|"W"|"NE"|"NW"|"SE"|"SW"|"PED"
     green_seconds: int
     yellow_seconds: int
     phase_order: int
@@ -147,6 +148,8 @@ class PredictionRequest(BaseModel):
     direction: str = Field(default="ALL", pattern=r"^(N|S|E|W|NE|NW|SE|SW|ALL)$")
     weather_condition: str = Field(default="clear", pattern=r"^(clear|light_rain|heavy_rain|fog|smog)$")
     pcu_total: float | None = Field(default=None, ge=0)
+    hour_of_day: int | None = Field(default=None, ge=0, le=23)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)  # 0=Monday
 
 
 class PredictionRead(BaseModel):

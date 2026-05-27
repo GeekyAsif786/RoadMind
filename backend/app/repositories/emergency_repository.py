@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import EmergencyEvent
+from app.models import EmergencyCorridor, EmergencyEvent
 
 
 class EmergencyRepository:
@@ -41,6 +41,14 @@ class EmergencyRepository:
             statement = statement.where(EmergencyEvent.intersection_id == intersection_id)
         statement = statement.order_by(desc(EmergencyEvent.detected_at)).limit(limit)
         return list(self.db.scalars(statement).all())
+
+    def get_corridors(self, emergency_id: UUID) -> list[EmergencyCorridor]:
+        return (
+            self.db.query(EmergencyCorridor)
+            .filter(EmergencyCorridor.emergency_id == emergency_id)
+            .order_by(EmergencyCorridor.sequence_order)
+            .all()
+        )
 
     def clear(self, event_id: UUID) -> EmergencyEvent | None:
         event = self.db.get(EmergencyEvent, event_id)
