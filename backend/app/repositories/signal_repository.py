@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import SignalPlan
+from app.models import SignalPhase, SignalPlan
 
 
 class SignalRepository:
@@ -15,6 +15,13 @@ class SignalRepository:
         self.db.commit()
         self.db.refresh(plan)
         return plan
+
+    def create_phases(self, phases: list[SignalPhase]) -> list[SignalPhase]:
+        self.db.add_all(phases)
+        self.db.commit()
+        for phase in phases:
+            self.db.refresh(phase)
+        return phases
 
     def latest(self, intersection_id: UUID | None = None, limit: int = 10) -> list[SignalPlan]:
         statement = select(SignalPlan)

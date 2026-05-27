@@ -8,12 +8,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Smart Traffic Optimization System"
     environment: str = "development"
+    log_level: str = Field(default="INFO")
     database_url: str = "postgresql+psycopg://traffic:traffic@localhost:5432/traffic_manager"
     auto_create_tables: bool = True
+    api_key: str = Field(default="dev-insecure-key-change-me")
+    enable_auth: bool = Field(default=False)
     enable_yolo: bool = False
     yolo_model_path: str = "yolov8n.pt"
     model_dir: Path = Path("./runtime_models")
-    default_lane_capacity: int = 18
+    default_lane_capacity: int = 12
     min_green_seconds: int = 15
     max_green_seconds: int = 90
     yellow_seconds: int = 4

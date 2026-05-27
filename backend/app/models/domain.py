@@ -38,10 +38,13 @@ class TrafficObservation(Base, TimestampMixin):
     intersection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("intersections.id", ondelete="CASCADE"), index=True
     )
+    direction: Mapped[str] = mapped_column(String(10), nullable=False, default="ALL")
     vehicle_count: Mapped[int] = mapped_column(Integer, nullable=False)
     density: Mapped[float] = mapped_column(Float, nullable=False)
     avg_speed: Mapped[float | None] = mapped_column(Float)
     occupancy: Mapped[float | None] = mapped_column(Float)
+    weather_condition: Mapped[str] = mapped_column(String(20), nullable=False, default="clear")
+    pcu_total: Mapped[float | None] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(40), nullable=False, default="manual")
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True, nullable=False
@@ -80,6 +83,24 @@ class SignalPlan(Base, TimestampMixin):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     intersection: Mapped[Intersection] = relationship(back_populates="signal_plans")
+    phases: Mapped[list["SignalPhase"]] = relationship(
+        back_populates="plan", order_by="SignalPhase.phase_order"
+    )
+
+
+class SignalPhase(Base, TimestampMixin):
+    __tablename__ = "signal_phases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("signal_plans.id", ondelete="CASCADE"), index=True
+    )
+    phase_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    green_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    yellow_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    phase_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan: Mapped["SignalPlan"] = relationship(back_populates="phases")
 
 
 class EmergencyEvent(Base, TimestampMixin):
@@ -99,6 +120,21 @@ class EmergencyEvent(Base, TimestampMixin):
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     intersection: Mapped[Intersection] = relationship(back_populates="emergencies")
+
+
+class EmergencyCorridor(Base, TimestampMixin):
+    __tablename__ = "emergency_corridors"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    emergency_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("emergency_events.id", ondelete="CASCADE"), index=True
+    )
+    intersection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intersections.id", ondelete="CASCADE")
+    )
+    sequence_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    green_offset_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
 
 
 class Prediction(Base, TimestampMixin):

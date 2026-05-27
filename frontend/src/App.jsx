@@ -3,13 +3,19 @@ import {
   Ambulance,
   BrainCircuit,
   Camera,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
   CircleGauge,
   Crosshair,
   GitBranch,
+  KeyRound,
   MapPin,
   Play,
   Plus,
   Radar,
+  RotateCcw,
+  Route,
   RadioTower,
   RefreshCw,
   ShieldAlert,
@@ -22,6 +28,23 @@ import MetricCard from "./components/MetricCard.jsx";
 import { api } from "./services/api.js";
 
 const SELECTED_INTERSECTION_KEY = "traffic-manager:selected-intersection";
+const DIRECTIONS = ["ALL", "N", "S", "E", "W", "NE", "NW", "SE", "SW"];
+const WEATHER_OPTIONS = ["clear", "light_rain", "heavy_rain", "fog", "smog"];
+const PCU_QUANTITY_SLIDER_MAX = 100;
+const PCU_VEHICLE_OPTIONS = [
+  { key: "two_wheeler", label: "Two-wheeler", factor: 0.5 },
+  { key: "auto_rickshaw", label: "Auto rickshaw", factor: 0.8 },
+  { key: "car", label: "Car", factor: 1.0 },
+  { key: "taxi", label: "Taxi", factor: 1.0 },
+  { key: "mini_bus", label: "Mini bus", factor: 2.0 },
+  { key: "bus", label: "Bus", factor: 3.0 },
+  { key: "truck", label: "Truck", factor: 3.5 },
+  { key: "tractor", label: "Tractor", factor: 4.0 },
+  { key: "cattle", label: "Cattle", factor: 1.5 },
+  { key: "cycle", label: "Cycle", factor: 0.3 },
+  { key: "e_rickshaw", label: "E-rickshaw", factor: 0.6 },
+  { key: "unknown", label: "Unknown", factor: 1.0 }
+];
 
 const emptySummary = {
   intersections: 0,
@@ -39,6 +62,34 @@ function percent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function createEmptyPcuCounts() {
+  return PCU_VEHICLE_OPTIONS.reduce((counts, vehicle) => ({ ...counts, [vehicle.key]: 0 }), {});
+}
+
+function normalizePcuQuantity(value) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) return 0;
+  return Math.floor(parsedValue);
+}
+
+function formatPcuTotal(value) {
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function calculatePcuTotals(counts) {
+  return PCU_VEHICLE_OPTIONS.reduce(
+    (totals, vehicle) => {
+      const quantity = normalizePcuQuantity(counts[vehicle.key]);
+      return {
+        vehicleCount: totals.vehicleCount + quantity,
+        pcuTotal: totals.pcuTotal + quantity * vehicle.factor
+      };
+    },
+    { vehicleCount: 0, pcuTotal: 0 }
+  );
+}
+
 export default function App() {
   const [summary, setSummary] = useState(emptySummary);
   const [intersections, setIntersections] = useState([]);
@@ -51,7 +102,16 @@ export default function App() {
   const [detection, setDetection] = useState(null);
   const [detectionPreviewUrl, setDetectionPreviewUrl] = useState("");
   const [correctedVehicleCount, setCorrectedVehicleCount] = useState("");
+  const [detectionDirection, setDetectionDirection] = useState("ALL");
+  const [detectionWeather, setDetectionWeather] = useState("clear");
+  const [detectionPcuTotal, setDetectionPcuTotal] = useState("");
   const [lastPredictions, setLastPredictions] = useState({});
+  const [apiKey, setApiKey] = useState(() => window.localStorage.getItem(api.apiKeyStorageKey) ?? "");
+  const [predictionDirection, setPredictionDirection] = useState("ALL");
+  const [predictionWeather, setPredictionWeather] = useState("clear");
+  const [predictionPcuTotal, setPredictionPcuTotal] = useState("");
+  const [manualVehicleCount, setManualVehicleCount] = useState(24);
+  const [manualPcuTotal, setManualPcuTotal] = useState("");
 
   const latestPlan = summary.signal_plans?.[0];
   const activeEmergencies = useMemo(
@@ -120,6 +180,22 @@ export default function App() {
           <h1>Smart Traffic Optimization</h1>
         </div>
         <div className="topbar-actions">
+          <div className="api-key-field">
+            <KeyRound size={16} />
+            <input
+              type="password"
+              placeholder="API key"
+              value={apiKey}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                if (event.target.value) {
+                  window.localStorage.setItem(api.apiKeyStorageKey, event.target.value);
+                } else {
+                  window.localStorage.removeItem(api.apiKeyStorageKey);
+                }
+              }}
+            />
+          </div>
           <select
             value={selectedIntersection}
             onChange={(event) => {
@@ -235,7 +311,10 @@ export default function App() {
                     () =>
                       api.createObservation({
                         intersection_id: requireIntersection(),
+                        direction: detectionDirection,
                         vehicle_count: Number(correctedVehicleCount),
+                        weather_condition: detectionWeather,
+                        pcu_total: detectionPcuTotal ? Number(detectionPcuTotal) : null,
                         source: "human_review"
                       }),
                     "Corrected frame count saved"
@@ -249,6 +328,33 @@ export default function App() {
                     min="0"
                     value={correctedVehicleCount}
                     onChange={(event) => setCorrectedVehicleCount(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Direction
+                  <select value={detectionDirection} onChange={(event) => setDetectionDirection(event.target.value)}>
+                    {DIRECTIONS.map((direction) => (
+                      <option key={direction}>{direction}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Weather
+                  <select value={detectionWeather} onChange={(event) => setDetectionWeather(event.target.value)}>
+                    {WEATHER_OPTIONS.map((weather) => (
+                      <option key={weather}>{weather}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  PCU
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="Optional"
+                    value={detectionPcuTotal}
+                    onChange={(event) => setDetectionPcuTotal(event.target.value)}
                   />
                 </label>
                 <button disabled={busy || !selectedIntersection}>
@@ -280,7 +386,10 @@ export default function App() {
                   async () => {
                     const result = await api.predict({
                       intersection_id: requireIntersection(),
-                      horizon_minutes: 30
+                      horizon_minutes: 30,
+                      direction: predictionDirection,
+                      weather_condition: predictionWeather,
+                      pcu_total: predictionPcuTotal ? Number(predictionPcuTotal) : null
                     });
                     setLastPredictions((current) => ({
                       ...current,
@@ -295,8 +404,59 @@ export default function App() {
               Predict
             </button>
           </div>
-          <ManualObservationForm disabled={busy} intersectionId={selectedIntersection} onDone={refresh} />
+          <div className="mini-grid">
+            <label>
+              Direction
+              <select value={predictionDirection} onChange={(event) => setPredictionDirection(event.target.value)}>
+                {DIRECTIONS.map((direction) => (
+                  <option key={direction}>{direction}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Weather
+              <select value={predictionWeather} onChange={(event) => setPredictionWeather(event.target.value)}>
+                {WEATHER_OPTIONS.map((weather) => (
+                  <option key={weather}>{weather}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              PCU
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder="Optional"
+                value={predictionPcuTotal}
+                onChange={(event) => setPredictionPcuTotal(event.target.value)}
+              />
+            </label>
+          </div>
+          <PredictionInputs
+            latestObservation={summary.observations?.[0]}
+            direction={predictionDirection}
+            weather={predictionWeather}
+            pcuTotal={predictionPcuTotal}
+            horizonMinutes={30}
+          />
           <PredictionReadout prediction={lastPredictions[selectedIntersection] ?? summary.predictions?.[0]} />
+        </section>
+
+        <section className="control-panel">
+          <div className="panel-heading">
+            <TrafficCone size={20} />
+            <h2>Traffic Log</h2>
+          </div>
+          <ManualObservationForm
+            disabled={busy}
+            intersectionId={selectedIntersection}
+            vehicleCount={manualVehicleCount}
+            setVehicleCount={setManualVehicleCount}
+            pcuTotal={manualPcuTotal}
+            setPcuTotal={setManualPcuTotal}
+            onDone={refresh}
+          />
         </section>
 
         <section className="control-panel">
@@ -317,6 +477,13 @@ export default function App() {
               </button>
             ))}
           </div>
+          <EmergencyCorridorForm
+            disabled={busy}
+            activeEmergency={activeEmergencies[0]}
+            intersections={intersections}
+            selectedIntersection={selectedIntersection}
+            onDone={refresh}
+          />
         </section>
       </section>
 
@@ -327,7 +494,118 @@ export default function App() {
       </section>
 
       <IntersectionForm disabled={busy} onDone={refresh} />
+      <PcuCalculator
+        hasDetection={Boolean(detection)}
+        onApplyDetection={(result) => {
+          setCorrectedVehicleCount(String(result.vehicleCount));
+          setDetectionPcuTotal(result.pcuTotalText);
+        }}
+        onApplyManual={(result) => {
+          setManualVehicleCount(result.vehicleCount);
+          setManualPcuTotal(result.pcuTotalText);
+        }}
+        onApplyPrediction={(result) => setPredictionPcuTotal(result.pcuTotalText)}
+      />
     </main>
+  );
+}
+
+function PcuCalculator({ hasDetection, onApplyDetection, onApplyManual, onApplyPrediction }) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [counts, setCounts] = useState(createEmptyPcuCounts);
+  const totals = useMemo(() => calculatePcuTotals(counts), [counts]);
+  const pcuTotalText = formatPcuTotal(totals.pcuTotal);
+  const applyResult = {
+    vehicleCount: totals.vehicleCount,
+    pcuTotal: totals.pcuTotal,
+    pcuTotalText
+  };
+
+  function updateVehicleCount(vehicleKey, value) {
+    setCounts((currentCounts) => ({
+      ...currentCounts,
+      [vehicleKey]: normalizePcuQuantity(value)
+    }));
+  }
+
+  return (
+    <aside className={`pcu-calculator ${isMinimized ? "minimized" : ""}`} aria-label="PCU calculator">
+      <button
+        type="button"
+        className="pcu-calculator-header"
+        onClick={() => setIsMinimized((current) => !current)}
+        aria-expanded={!isMinimized}
+      >
+        <span className="pcu-title">
+          <Calculator size={18} />
+          PCU Calculator
+        </span>
+        <span className="pcu-header-total">{pcuTotalText} PCU</span>
+        {isMinimized ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {!isMinimized && (
+        <div className="pcu-calculator-body">
+          <div className="pcu-total-grid" aria-live="polite">
+            <div>
+              <span>Vehicles</span>
+              <strong>{totals.vehicleCount}</strong>
+            </div>
+            <div>
+              <span>Total PCU</span>
+              <strong>{pcuTotalText}</strong>
+            </div>
+          </div>
+
+          <div className="pcu-vehicle-list">
+            {PCU_VEHICLE_OPTIONS.map((vehicle) => {
+              const quantity = normalizePcuQuantity(counts[vehicle.key]);
+              const sliderMax = Math.max(PCU_QUANTITY_SLIDER_MAX, quantity);
+              return (
+                <label className="pcu-vehicle-row" key={vehicle.key}>
+                  <span className="pcu-vehicle-name">
+                    {vehicle.label}
+                    <small>{vehicle.factor} PCU</small>
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={quantity}
+                    onChange={(event) => updateVehicleCount(vehicle.key, event.target.value)}
+                    aria-label={`${vehicle.label} quantity`}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max={sliderMax}
+                    value={quantity}
+                    onChange={(event) => updateVehicleCount(vehicle.key, event.target.value)}
+                    aria-label={`${vehicle.label} quantity slider`}
+                  />
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="pcu-actions">
+            <button type="button" onClick={() => setCounts(createEmptyPcuCounts())} title="Reset PCU counts">
+              <RotateCcw size={16} />
+              Reset
+            </button>
+            <button type="button" onClick={() => onApplyManual(applyResult)}>
+              Traffic Log
+            </button>
+            <button type="button" onClick={() => onApplyPrediction(applyResult)}>
+              Prediction
+            </button>
+            <button type="button" disabled={!hasDetection} onClick={() => onApplyDetection(applyResult)}>
+              Frame Review
+            </button>
+          </div>
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -347,6 +625,37 @@ function PredictionReadout({ prediction }) {
       <div>
         <strong>{percent(prediction.predicted_density)}</strong>
         <small>{Math.round(prediction.predicted_vehicle_count)} vehicles</small>
+      </div>
+    </div>
+  );
+}
+
+function PredictionInputs({ latestObservation, direction, weather, pcuTotal, horizonMinutes }) {
+  return (
+    <div className="prediction-inputs">
+      <div>
+        <span>Latest Count</span>
+        <strong>{latestObservation?.vehicle_count ?? 0}</strong>
+      </div>
+      <div>
+        <span>Latest Density</span>
+        <strong>{percent(latestObservation?.density)}</strong>
+      </div>
+      <div>
+        <span>Direction</span>
+        <strong>{direction}</strong>
+      </div>
+      <div>
+        <span>Weather</span>
+        <strong>{weather}</strong>
+      </div>
+      <div>
+        <span>PCU</span>
+        <strong>{pcuTotal || latestObservation?.pcu_total || "raw"}</strong>
+      </div>
+      <div>
+        <span>Horizon</span>
+        <strong>{horizonMinutes}m</strong>
       </div>
     </div>
   );
@@ -397,8 +706,17 @@ function IntersectionForm({ disabled, onDone }) {
   );
 }
 
-function ManualObservationForm({ disabled, intersectionId, onDone }) {
-  const [vehicleCount, setVehicleCount] = useState(24);
+function ManualObservationForm({
+  disabled,
+  intersectionId,
+  vehicleCount,
+  setVehicleCount,
+  pcuTotal,
+  setPcuTotal,
+  onDone
+}) {
+  const [direction, setDirection] = useState("ALL");
+  const [weatherCondition, setWeatherCondition] = useState("clear");
   return (
     <form
       className="compact-form"
@@ -407,7 +725,10 @@ function ManualObservationForm({ disabled, intersectionId, onDone }) {
         api
           .createObservation({
             intersection_id: intersectionId,
+            direction,
             vehicle_count: Number(vehicleCount),
+            weather_condition: weatherCondition,
+            pcu_total: pcuTotal ? Number(pcuTotal) : null,
             source: "manual"
           })
           .then(() => onDone(intersectionId));
@@ -420,6 +741,33 @@ function ManualObservationForm({ disabled, intersectionId, onDone }) {
           min="0"
           value={vehicleCount}
           onChange={(event) => setVehicleCount(event.target.value)}
+        />
+      </label>
+      <label>
+        Direction
+        <select value={direction} onChange={(event) => setDirection(event.target.value)}>
+          {DIRECTIONS.map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Weather
+        <select value={weatherCondition} onChange={(event) => setWeatherCondition(event.target.value)}>
+          {WEATHER_OPTIONS.map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        PCU
+        <input
+          type="number"
+          min="0"
+          step="0.1"
+          placeholder="Optional"
+          value={pcuTotal}
+          onChange={(event) => setPcuTotal(event.target.value)}
         />
       </label>
       <button disabled={disabled || !intersectionId}>
@@ -499,6 +847,81 @@ function EmergencyForm({ disabled, intersectionId, onDone }) {
   );
 }
 
+function EmergencyCorridorForm({ disabled, activeEmergency, intersections, selectedIntersection, onDone }) {
+  const defaultIds = useMemo(
+    () => intersections.map((intersection) => intersection.id),
+    [intersections]
+  );
+  const [selectedIds, setSelectedIds] = useState(defaultIds);
+  const [avgSpeedKmh, setAvgSpeedKmh] = useState(30);
+
+  useEffect(() => {
+    setSelectedIds(defaultIds);
+  }, [defaultIds]);
+
+  if (!activeEmergency) {
+    return (
+      <div className="corridor-box muted">
+        <Route size={18} />
+        <span>No active corridor</span>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="corridor-box"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const orderedIds = [
+          selectedIntersection,
+          ...selectedIds.filter((id) => id !== selectedIntersection)
+        ].filter(Boolean);
+        api
+          .createCorridor(activeEmergency.id, orderedIds, Number(avgSpeedKmh))
+          .then(() => onDone(selectedIntersection));
+      }}
+    >
+      <div className="corridor-title">
+        <Route size={18} />
+        <span>Green Corridor</span>
+      </div>
+      <label>
+        Speed km/h
+        <input
+          type="number"
+          min="5"
+          max="120"
+          value={avgSpeedKmh}
+          onChange={(event) => setAvgSpeedKmh(event.target.value)}
+        />
+      </label>
+      <div className="corridor-list">
+        {intersections.map((intersection) => (
+          <label key={intersection.id}>
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(intersection.id)}
+              onChange={(event) => {
+                setSelectedIds((current) =>
+                  event.target.checked
+                    ? [...new Set([...current, intersection.id])]
+                    : current.filter((id) => id !== intersection.id)
+                );
+              }}
+            />
+            <span>{intersection.name}</span>
+          </label>
+        ))}
+      </div>
+      <button disabled={disabled || selectedIds.length === 0}>
+        <Route size={18} />
+        Create
+      </button>
+    </form>
+  );
+}
+
 function Timeline({ title, icon: Icon, rows, plan, prediction }) {
   return (
     <section className="timeline-panel">
@@ -520,6 +943,22 @@ function Timeline({ title, icon: Icon, rows, plan, prediction }) {
                 {prediction && percent(row.predicted_density)}
                 {!plan && !prediction && percent(row.density)}
               </span>
+              {plan && row.phases?.length > 0 && (
+                <div className="phase-strip">
+                  {row.phases.map((phase) => (
+                    <span key={phase.id}>
+                      {phase.direction} {phase.green_seconds}s
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!plan && !prediction && (
+                <div className="meta-strip">
+                  <span>{row.direction}</span>
+                  <span>{row.weather_condition}</span>
+                  {row.pcu_total !== null && row.pcu_total !== undefined && <span>{row.pcu_total} PCU</span>}
+                </div>
+              )}
               <small>{new Date(row.created_at ?? row.captured_at).toLocaleString()}</small>
             </article>
           ))

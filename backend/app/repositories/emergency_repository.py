@@ -17,6 +17,9 @@ class EmergencyRepository:
         self.db.refresh(event)
         return event
 
+    def get(self, event_id: UUID) -> EmergencyEvent | None:
+        return self.db.get(EmergencyEvent, event_id)
+
     def clear_active_for_intersection(self, intersection_id: UUID) -> int:
         events = self.active(intersection_id)
         now = datetime.now(UTC)

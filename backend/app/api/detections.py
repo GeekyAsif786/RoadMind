@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_api_key
 from app.db.session import get_db
 from app.schemas import DetectionRead
 from app.services.detection_service import DetectionService
@@ -10,7 +11,7 @@ from app.services.detection_service import DetectionService
 router = APIRouter()
 
 
-@router.post("/image", response_model=DetectionRead)
+@router.post("/image", response_model=DetectionRead, dependencies=[Depends(require_api_key)])
 async def detect_from_image(
     file: UploadFile = File(...),
     intersection_id: UUID | None = None,

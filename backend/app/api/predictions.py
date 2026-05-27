@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_api_key
 from app.db.session import get_db
 from app.schemas import PredictionRead, PredictionRequest, PredictionTrainResponse
 from app.services.prediction_service import PredictionService
@@ -8,12 +9,17 @@ from app.services.prediction_service import PredictionService
 router = APIRouter()
 
 
-@router.post("/train", response_model=PredictionTrainResponse)
+@router.post("/train", response_model=PredictionTrainResponse, dependencies=[Depends(require_api_key)])
 def train_model(db: Session = Depends(get_db)):
     version, samples, score = PredictionService(db).train()
     return PredictionTrainResponse(model_version=version, samples=samples, score=score)
 
 
-@router.post("", response_model=PredictionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=PredictionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_key)],
+)
 def create_prediction(payload: PredictionRequest, db: Session = Depends(get_db)):
     return PredictionService(db).predict(payload)
