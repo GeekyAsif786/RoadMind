@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_api_key
 from app.db.session import get_db
 from app.schemas import OptimizationRequest, SignalPlanRead
 from app.services.optimization_service import SignalOptimizationService
@@ -19,7 +20,7 @@ def latest_signal_plans(
     return SignalOptimizationService(db).latest(intersection_id=intersection_id, limit=limit)
 
 
-@router.post("/optimize", response_model=SignalPlanRead)
+@router.post("/optimize", response_model=SignalPlanRead, dependencies=[Depends(require_api_key)])
 def optimize_signal(payload: OptimizationRequest, db: Session = Depends(get_db)):
     return SignalOptimizationService(db).optimize(
         intersection_id=payload.intersection_id,

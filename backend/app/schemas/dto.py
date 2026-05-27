@@ -10,6 +10,7 @@ class IntersectionBase(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     lanes: int = Field(default=4, ge=1, le=16)
+    road_type: str = Field(default="urban", pattern=r"^(urban|highway|service)$")
     status: str = "active"
 
 
@@ -26,10 +27,13 @@ class IntersectionRead(IntersectionBase):
 
 class TrafficObservationCreate(BaseModel):
     intersection_id: UUID
+    direction: str = Field(default="ALL", pattern=r"^(N|S|E|W|NE|NW|SE|SW|ALL)$")
     vehicle_count: int = Field(ge=0)
     density: float | None = Field(default=None, ge=0, le=1)
     avg_speed: float | None = Field(default=None, ge=0)
     occupancy: float | None = Field(default=None, ge=0, le=1)
+    weather_condition: str = Field(default="clear", pattern=r"^(clear|light_rain|heavy_rain|fog|smog)$")
+    pcu_total: float | None = Field(default=None, ge=0)
     source: str = "manual"
     captured_at: datetime | None = None
 
@@ -39,10 +43,13 @@ class TrafficObservationRead(BaseModel):
 
     id: UUID
     intersection_id: UUID
+    direction: str
     vehicle_count: int
     density: float
     avg_speed: float | None
     occupancy: float | None
+    weather_condition: str
+    pcu_total: float | None
     source: str
     captured_at: datetime
     created_at: datetime
@@ -68,6 +75,19 @@ class DetectionRead(BaseModel):
     emergency_detected: bool = False
 
 
+class SignalPhaseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    plan_id: UUID
+    phase_number: int
+    direction: str  # "N"|"S"|"E"|"W"|"NE"|"NW"|"SE"|"SW"|"PED"
+    green_seconds: int
+    yellow_seconds: int
+    phase_order: int
+    created_at: datetime
+
+
 class SignalPlanRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,6 +100,7 @@ class SignalPlanRead(BaseModel):
     reason: str
     expires_at: datetime | None
     created_at: datetime
+    phases: list[SignalPhaseRead] = Field(default_factory=list)
 
 
 class EmergencyCreate(BaseModel):
@@ -103,6 +124,18 @@ class EmergencyRead(BaseModel):
     created_at: datetime
 
 
+class EmergencyCorridorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    emergency_id: UUID
+    intersection_id: UUID
+    sequence_order: int
+    green_offset_seconds: int
+    status: str
+    created_at: datetime
+
+
 class PredictionTrainResponse(BaseModel):
     model_version: str
     samples: int
@@ -112,6 +145,11 @@ class PredictionTrainResponse(BaseModel):
 class PredictionRequest(BaseModel):
     intersection_id: UUID
     horizon_minutes: int = Field(default=15, ge=1, le=240)
+    direction: str = Field(default="ALL", pattern=r"^(N|S|E|W|NE|NW|SE|SW|ALL)$")
+    weather_condition: str = Field(default="clear", pattern=r"^(clear|light_rain|heavy_rain|fog|smog)$")
+    pcu_total: float | None = Field(default=None, ge=0)
+    hour_of_day: int | None = Field(default=None, ge=0, le=23)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)  # 0=Monday
 
 
 class PredictionRead(BaseModel):
