@@ -241,3 +241,13 @@ Run tests when dependencies are installed:
 cd backend
 pytest
 ```
+
+## System Architecture & Data Flow diagram
+
+![Architecture Flow](Assets/Program_flow.excalidraw.png)
+(available in Assets folder)
+
+## Program flow mindmap
+
+![Flowmap](Assets/RoadMind_flow.png)
+(available in Assets folder)
