@@ -230,8 +230,11 @@ class XGBoostPredictor(BaseTrafficPredictor):
     def build_model(self) -> object:
         try:
             from xgboost import XGBRegressor
-        except ImportError:
-            logger.warning("TRAFFIC_MODEL=xgboost but xgboost is unavailable; falling back to RandomForest.")
+        except Exception as exc:
+            logger.warning(
+                "TRAFFIC_MODEL=xgboost but xgboost is unavailable; falling back to RandomForest: %s",
+                exc,
+            )
             self.model_key = RandomForestPredictor.model_key
             self.version_prefix = RandomForestPredictor.version_prefix
             return RandomForestPredictor().build_model()
