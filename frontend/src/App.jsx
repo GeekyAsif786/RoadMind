@@ -266,6 +266,7 @@ export default function App() {
           <div className="signal-readout">
             <strong>{latestPlan?.green_seconds ?? 0}s</strong>
             <span>{latestPlan?.priority ?? "normal"}</span>
+            <span>{latestPlan?.decision_source ?? summary.metadata?.signal_decision_source ?? "safe_fallback"}</span>
           </div>
           <p className="signal-reason">{latestPlan?.reason ?? "No active timing plan"}</p>
           <button

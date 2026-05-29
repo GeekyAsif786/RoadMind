@@ -14,6 +14,15 @@ from app.schemas import EmergencyCorridorRead, EmergencyCreate
 from app.services.optimization_service import SignalOptimizationService
 
 AVG_INTERSECTION_SPACING_M = 400
+EMERGENCY_PRIORITY = {
+    "ambulance": 1,
+    "fire": 2,
+    "fire truck": 2,
+    "disaster": 3,
+    "disaster response": 3,
+    "police": 4,
+    "vip": 5,
+}
 
 
 class EmergencySignalContext(BaseModel):
@@ -89,15 +98,22 @@ class EmergencyService:
         avg_speed_ms = max((avg_speed_kmh * 1000) / 3600, 0.1)
         time_per_intersection = AVG_INTERSECTION_SPACING_M / avg_speed_ms
         corridors: list[EmergencyCorridor] = []
+        source_event = self.emergencies.get(emergency_id)
+        source_priority = self._priority_rank(source_event.vehicle_type if source_event else "ambulance")
 
         for i, intersection_id in enumerate(intersection_ids):
             offset_seconds = int(i * time_per_intersection)
+            active_conflicts = [
+                event
+                for event in self.emergencies.active(intersection_id)
+                if event.id != emergency_id and self._priority_rank(event.vehicle_type) < source_priority
+            ]
             corridor = EmergencyCorridor(
                 emergency_id=emergency_id,
                 intersection_id=intersection_id,
                 sequence_order=i,
                 green_offset_seconds=offset_seconds,
-                status="pending",
+                status="conflict" if active_conflicts else "pending",
             )
             self.db.add(corridor)
 
@@ -113,6 +129,11 @@ class EmergencyService:
         cache.delete_prefix("dashboard:summary:")
         cache.delete(f"emergency_corridors:{emergency_id}")
         return corridors
+
+    @staticmethod
+    def _priority_rank(vehicle_type: str) -> int:
+        normalized = vehicle_type.strip().lower()
+        return EMERGENCY_PRIORITY.get(normalized, 99)
 
     def _invalidate_emergency_cache(self, intersection_id: UUID, emergency_id: UUID | None = None) -> None:
         cache = get_cache()

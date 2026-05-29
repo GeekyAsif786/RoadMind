@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 from app.core.config import get_settings
+from app.core.metrics import get_metrics
 from app.schemas import BoundingBox
 
 
@@ -36,10 +37,8 @@ class YOLOVehicleDetector:
         try:
             from ultralytics import YOLO
         except ImportError as exc:
-            raise ValueError(
-                "YOLO is enabled but optional vision dependencies are not installed. "
-                "Install backend/requirements-vision.txt or set ENABLE_YOLO=false."
-            ) from exc
+            get_metrics().record_yolo_failure()
+            return None
 
         return YOLO(self.settings.yolo_model_path)
 
@@ -49,7 +48,14 @@ class YOLOVehicleDetector:
             return self._detect_with_opencv(image)
 
         frame_height, frame_width = image.shape[:2]
-        predictions = self.model.predict(image, conf=confidence, verbose=False, device="cpu")
+        if self.model is None:
+            return self._detect_with_opencv(image)
+
+        try:
+            predictions = self.model.predict(image, conf=confidence, verbose=False, device=self.settings.yolo_device)
+        except Exception:
+            get_metrics().record_yolo_failure()
+            return self._detect_with_opencv(image)
 
         boxes: list[BoundingBox] = []
         emergency_detected = False
