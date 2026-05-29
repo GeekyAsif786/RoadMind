@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_ttl_seconds: int = 30
     job_queue_enabled: bool = False
-    traffic_model: str = "random_forest"
+    traffic_model: str = "xgboost"
     detection_freshness_seconds: int = 10
     detection_worker_count: int = 2
     detection_batch_size: int = 4

@@ -26,7 +26,7 @@ DATABASE_URL=postgresql+psycopg://...
 REDIS_URL=redis://redis:6379/0
 CACHE_ENABLED=true
 JOB_QUEUE_ENABLED=true
-TRAFFIC_MODEL=random_forest
+TRAFFIC_MODEL=xgboost
 ```
 
 Migration workflow:
