@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS signal_plans (
     red_seconds INTEGER NOT NULL,
     priority VARCHAR(40) NOT NULL DEFAULT 'normal',
     reason TEXT NOT NULL,
+    decision_source VARCHAR(40) NOT NULL DEFAULT 'historical_observation',
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -125,6 +126,33 @@ CREATE TABLE IF NOT EXISTS predictions (
 
 CREATE INDEX IF NOT EXISTS ix_predictions_intersection_created
     ON predictions(intersection_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS intersection_signal_states (
+    intersection_id UUID PRIMARY KEY REFERENCES intersections(id) ON DELETE CASCADE,
+    last_density DOUBLE PRECISION NOT NULL DEFAULT 0,
+    last_vehicle_count INTEGER NOT NULL DEFAULT 0,
+    last_signal_plan_id UUID REFERENCES signal_plans(id) ON DELETE SET NULL,
+    last_detection_timestamp TIMESTAMPTZ,
+    decision_source VARCHAR(40) NOT NULL DEFAULT 'safe_fallback_plan',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_intersection_signal_states_updated_at
+    ON intersection_signal_states(updated_at);
+
+CREATE TABLE IF NOT EXISTS model_evaluations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    model_version VARCHAR(80) NOT NULL UNIQUE,
+    model_type VARCHAR(40) NOT NULL,
+    samples INTEGER NOT NULL,
+    mae DOUBLE PRECISION,
+    rmse DOUBLE PRECISION,
+    r2 DOUBLE PRECISION,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_model_evaluations_created_at
+    ON model_evaluations(created_at);
 
 INSERT INTO intersections (name, latitude, longitude, lanes)
 VALUES ('Central Avenue Junction', 28.6139, 77.2090, 4)

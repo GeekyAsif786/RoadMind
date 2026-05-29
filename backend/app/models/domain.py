@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -82,6 +82,7 @@ class SignalPlan(Base, TimestampMixin):
     red_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     priority: Mapped[str] = mapped_column(String(40), nullable=False, default="normal")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    decision_source: Mapped[str] = mapped_column(String(40), nullable=False, default="historical_observation")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     intersection: Mapped[Intersection] = relationship(back_populates="signal_plans")
@@ -150,3 +151,34 @@ class Prediction(Base, TimestampMixin):
     predicted_density: Mapped[float] = mapped_column(Float, nullable=False)
     predicted_vehicle_count: Mapped[float] = mapped_column(Float, nullable=False)
     model_version: Mapped[str] = mapped_column(String(80), nullable=False)
+
+
+class IntersectionSignalState(Base):
+    __tablename__ = "intersection_signal_states"
+
+    intersection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intersections.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_density: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    last_vehicle_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_signal_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("signal_plans.id", ondelete="SET NULL"), nullable=True
+    )
+    last_detection_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_source: Mapped[str] = mapped_column(String(40), nullable=False, default="safe_fallback_plan")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class ModelEvaluation(Base, TimestampMixin):
+    __tablename__ = "model_evaluations"
+    __table_args__ = (UniqueConstraint("model_version", name="uq_model_evaluations_model_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    model_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    model_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    samples: Mapped[int] = mapped_column(Integer, nullable=False)
+    mae: Mapped[float | None] = mapped_column(Float)
+    rmse: Mapped[float | None] = mapped_column(Float)
+    r2: Mapped[float | None] = mapped_column(Float)

@@ -16,8 +16,17 @@ class Settings(BaseSettings):
     redis_url: str = ""
     cache_enabled: bool = False
     cache_ttl_seconds: int = 30
+    job_queue_enabled: bool = False
+    traffic_model: str = "random_forest"
+    detection_freshness_seconds: int = 10
+    detection_worker_count: int = 2
+    detection_batch_size: int = 4
+    upload_max_bytes: int = 10 * 1024 * 1024
+    rate_limit_per_minute: int = 120
+    metrics_enabled: bool = True
     enable_yolo: bool = False
     yolo_model_path: str = "yolov8n.pt"
+    yolo_device: str = "cpu"
     model_dir: Path = Path("./runtime_models")
     default_lane_capacity: int = 50  # ~50 PCUs per lane for urban Indian arterials (IRC standard)
     highway_lane_capacity: int = 80   # NH/expressway lanes
