@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     auto_create_tables: bool = True
     api_key: str = Field(default="dev-insecure-key-change-me")
     enable_auth: bool = Field(default=False)
+    redis_url: str = ""
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 30
     enable_yolo: bool = False
     yolo_model_path: str = "yolov8n.pt"
     model_dir: Path = Path("./runtime_models")
