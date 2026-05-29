@@ -11,3 +11,6 @@ joblib==1.4.2
 alembic==1.14.0
 workalendar==17.0.0
 redis==5.2.1
+rq==2.1.0
+prometheus-client==0.21.1
+structlog==24.4.0
