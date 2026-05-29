@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, inspect, text
 
 from app.core.config import Settings
@@ -61,6 +59,13 @@ def _get_database_revision(engine: Engine) -> str | None:
 
 
 def _get_alembic_head_revision() -> str | None:
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+    except ImportError:
+        logger.warning("Alembic is not installed; migration head validation is unavailable.")
+        return None
+
     backend_root = Path(__file__).resolve().parents[2]
     alembic_config = Config(str(backend_root / "alembic.ini"))
     alembic_config.set_main_option("script_location", str(backend_root / "alembic"))
