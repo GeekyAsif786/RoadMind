@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.db.base import Base
+from app.core.startup import prepare_database
 from app.db.session import engine
 
 settings = get_settings()
@@ -12,8 +12,7 @@ configure_logging(settings.log_level)
 
 
 def create_app() -> FastAPI:
-    if settings.auto_create_tables:
-        Base.metadata.create_all(bind=engine)
+    prepare_database(engine, settings)
 
     app = FastAPI(title=settings.app_name, version="1.0.0")
     app.add_middleware(
