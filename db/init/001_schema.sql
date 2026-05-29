@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS traffic_observations (
 CREATE INDEX IF NOT EXISTS ix_traffic_intersection_time
     ON traffic_observations(intersection_id, captured_at DESC);
 
+CREATE INDEX IF NOT EXISTS ix_traffic_observations_captured_at
+    ON traffic_observations(captured_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_traffic_observations_intersection_direction_time
+    ON traffic_observations(intersection_id, direction, captured_at DESC);
+
 CREATE TABLE IF NOT EXISTS detection_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     intersection_id UUID REFERENCES intersections(id) ON DELETE SET NULL,
@@ -40,6 +46,9 @@ CREATE TABLE IF NOT EXISTS detection_events (
     metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS ix_detection_events_intersection_created
+    ON detection_events(intersection_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS signal_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,6 +94,9 @@ CREATE TABLE IF NOT EXISTS emergency_events (
 CREATE INDEX IF NOT EXISTS ix_emergency_events_active
     ON emergency_events(intersection_id, status, severity DESC);
 
+CREATE INDEX IF NOT EXISTS ix_emergency_events_intersection_detected
+    ON emergency_events(intersection_id, detected_at DESC);
+
 CREATE TABLE IF NOT EXISTS emergency_corridors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     emergency_id UUID NOT NULL REFERENCES emergency_events(id) ON DELETE CASCADE,
@@ -98,6 +110,9 @@ CREATE TABLE IF NOT EXISTS emergency_corridors (
 CREATE INDEX IF NOT EXISTS ix_corridors_emergency
     ON emergency_corridors(emergency_id, sequence_order);
 
+CREATE INDEX IF NOT EXISTS ix_emergency_corridors_intersection_status
+    ON emergency_corridors(intersection_id, status);
+
 CREATE TABLE IF NOT EXISTS predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     intersection_id UUID NOT NULL REFERENCES intersections(id) ON DELETE CASCADE,
@@ -107,6 +122,9 @@ CREATE TABLE IF NOT EXISTS predictions (
     model_version VARCHAR(80) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS ix_predictions_intersection_created
+    ON predictions(intersection_id, created_at DESC);
 
 INSERT INTO intersections (name, latitude, longitude, lanes)
 VALUES ('Central Avenue Junction', 28.6139, 77.2090, 4)
