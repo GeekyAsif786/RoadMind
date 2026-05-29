@@ -1,0 +1,28 @@
+services:
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  backend:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      AUTO_CREATE_TABLES: "false"
+      ENABLE_AUTH: "true"
+      CACHE_ENABLED: "true"
+      JOB_QUEUE_ENABLED: "true"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+
+  worker:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      AUTO_CREATE_TABLES: "false"
+      JOB_QUEUE_ENABLED: "true"
+
+  pgadmin:
+    profiles: ["debug"]

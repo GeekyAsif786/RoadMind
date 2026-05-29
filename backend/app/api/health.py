@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import get_cache
 from app.db.session import get_db
+from app.ml.traffic_predictor import TrafficPredictor
 
 router = APIRouter()
 
@@ -34,3 +35,11 @@ def database_health_check(db: Session = Depends(get_db)) -> dict[str, str]:
 @router.get("/health/cache")
 def cache_health_check() -> dict[str, str]:
     return get_cache().health()
+
+
+@router.get("/health/ml")
+def ml_health_check() -> dict[str, str]:
+    predictor = TrafficPredictor()
+    if predictor.strategy.model_path.exists():
+        return {"status": "ok", "model": predictor.strategy.model_key}
+    return {"status": "unavailable", "detail": "Prediction model has not been trained"}
