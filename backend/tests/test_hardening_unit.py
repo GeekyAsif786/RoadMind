@@ -21,6 +21,14 @@ def test_security_headers_include_operator_safe_defaults() -> None:
     assert "camera=()" in headers["Permissions-Policy"]
 
 
+def test_job_error_formatter_returns_actionable_message() -> None:
+    from app.core.jobs import JobQueue
+
+    error = "Traceback...\nRuntimeError: Insufficient training data: 20 samples found"
+
+    assert JobQueue._format_error(error) == "RuntimeError: Insufficient training data: 20 samples found"
+
+
 def test_xgboost_strategy_can_be_selected(monkeypatch, tmp_path: Path) -> None:
     from app.core.config import get_settings
     from app.ml.traffic_predictor import TrafficPredictor
