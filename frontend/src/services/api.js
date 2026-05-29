@@ -54,8 +54,9 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
-    }),
+  }),
   trainPrediction: () => request("/predictions/train", { method: "POST" }),
+  jobStatus: (jobId) => request(`/jobs/${encodeURIComponent(jobId)}`),
   predict: (payload) =>
     request("/predictions", {
       method: "POST",

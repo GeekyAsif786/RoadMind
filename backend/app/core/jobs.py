@@ -54,7 +54,7 @@ class JobQueue:
             try:
                 job = Job.fetch(job_id, connection=self._redis_connection)
                 result = job.result if isinstance(job.result, dict) else None
-                error = job.exc_info if job.is_failed else None
+                error = self._format_error(job.exc_info) if job.is_failed else None
                 return {"id": job_id, "status": job.get_status(), "result": result, "error": error}
             except Exception as exc:
                 logger.warning("Unable to fetch RQ job status for job=%s: %s", job_id, exc)
@@ -70,10 +70,17 @@ class JobQueue:
             result = func(*args, **kwargs)
             self._local_jobs[job_id]["result"] = result if isinstance(result, dict) else {"value": result}
             self._local_jobs[job_id]["status"] = "finished"
-        except Exception:
+        except Exception as exc:
             logger.exception("Local background job failed: job=%s", job_id)
             self._local_jobs[job_id]["status"] = "failed"
-            self._local_jobs[job_id]["error"] = traceback.format_exc()
+            self._local_jobs[job_id]["error"] = self._format_error(traceback.format_exc()) or str(exc)
+
+    @staticmethod
+    def _format_error(error: str | None) -> str | None:
+        if not error:
+            return None
+        lines = [line.strip() for line in error.splitlines() if line.strip()]
+        return lines[-1] if lines else error
 
 
 @lru_cache

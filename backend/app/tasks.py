@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+
 from app.db.session import SessionLocal
 from app.services.prediction_service import PredictionService
 
@@ -14,5 +16,7 @@ def train_traffic_model_task() -> dict[str, object]:
             "rmse": metrics.get("rmse"),
             "r2": metrics.get("r2"),
         }
+    except HTTPException as exc:
+        raise RuntimeError(str(exc.detail)) from exc
     finally:
         db.close()
