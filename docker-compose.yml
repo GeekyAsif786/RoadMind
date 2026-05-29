@@ -44,7 +44,7 @@ services:
       CACHE_ENABLED: "true"
       CACHE_TTL_SECONDS: "30"
       JOB_QUEUE_ENABLED: "true"
-      TRAFFIC_MODEL: random_forest
+      TRAFFIC_MODEL: xgboost
       DETECTION_FRESHNESS_SECONDS: "10"
       DETECTION_WORKER_COUNT: "2"
       DETECTION_BATCH_SIZE: "4"
@@ -77,7 +77,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CACHE_ENABLED: "true"
       JOB_QUEUE_ENABLED: "true"
-      TRAFFIC_MODEL: random_forest
+      TRAFFIC_MODEL: xgboost
       MODEL_DIR: /app/runtime_models
     depends_on:
       postgres:
