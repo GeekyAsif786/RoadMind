@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.cache import get_cache
 from app.models import TrafficObservation
 from app.repositories.intersection_repository import IntersectionRepository
+from app.repositories.signal_state_repository import SignalStateRepository
 from app.repositories.traffic_repository import TrafficRepository
 from app.schemas import TrafficObservationCreate
 from app.services.density_service import DensityService
@@ -16,6 +17,7 @@ class TrafficService:
     def __init__(self, db: Session):
         self.intersections = IntersectionRepository(db)
         self.traffic = TrafficRepository(db)
+        self.signal_states = SignalStateRepository(db)
         self.density = DensityService()
 
     def create_observation(self, payload: TrafficObservationCreate) -> TrafficObservation:
@@ -47,6 +49,13 @@ class TrafficService:
         cache = get_cache()
         cache.delete_prefix("dashboard:summary:")
         cache.delete_prefix("traffic:latest:")
+        self.signal_states.upsert(
+            intersection_id=payload.intersection_id,
+            last_density=saved.density,
+            last_vehicle_count=saved.vehicle_count,
+            decision_source="historical_observation",
+            last_detection_timestamp=saved.captured_at if saved.source == "vision" else None,
+        )
         return saved
 
     def latest(self, intersection_id: UUID | None = None, limit: int = 20) -> list[TrafficObservation]:

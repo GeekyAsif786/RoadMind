@@ -8,11 +8,15 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_cache
 from app.core.config import get_settings
+from app.core.metrics import get_metrics
 from app.models import EmergencyCorridor, EmergencyEvent, SignalPhase, SignalPlan
 from app.repositories.emergency_repository import EmergencyRepository
 from app.repositories.intersection_repository import IntersectionRepository
+from app.repositories.prediction_repository import PredictionRepository
 from app.repositories.signal_repository import SignalRepository
+from app.repositories.signal_state_repository import SignalStateRepository
 from app.repositories.traffic_repository import TrafficRepository
 from app.services.density_service import DensityService
 
@@ -34,6 +38,10 @@ PEAK_HOURS = {
 PEAK_GREEN_BONUS = 15
 OFFPEAK_GREEN_REDUCTION = 10
 NIGHT_HOURS = (23, 5)
+DECISION_LIVE_DETECTION = "live_detection"
+DECISION_PREDICTION = "prediction"
+DECISION_HISTORICAL = "historical_observation"
+DECISION_SAFE_FALLBACK = "safe_fallback_plan"
 SIGNAL_DIRECTION_ALIASES: dict[str, str] = {
     "n": "N",
     "north": "N",
@@ -84,6 +92,8 @@ class SignalOptimizationService:
         self.intersections = IntersectionRepository(db)
         self.traffic = TrafficRepository(db)
         self.signals = SignalRepository(db)
+        self.predictions = PredictionRepository(db)
+        self.signal_states = SignalStateRepository(db)
         self.emergencies = EmergencyRepository(db)
         self.density_service = DensityService()
 
@@ -94,10 +104,11 @@ class SignalOptimizationService:
 
         active_emergencies = self.emergencies.active(intersection_id)
         recent_obs = self.traffic.latest(intersection_id, limit=20)
-        latest = recent_obs[:1]
-        latest_density = latest[0].density if latest else 0.0
-        latest_speed = latest[0].avg_speed if latest else None
-        latest_weather = latest[0].weather_condition if latest else "clear"
+        decision = self._select_signal_decision(intersection_id, recent_obs)
+        latest_density = decision["density"]
+        latest_speed = decision["avg_speed"]
+        latest_weather = decision["weather_condition"]
+        decision_source = decision["source"]
         directional_volumes: dict[str, float] | None = None
         if recent_obs:
             dir_counts: dict[str, float] = {}
@@ -117,7 +128,7 @@ class SignalOptimizationService:
             priority = density_class
             reason = (
                 f"Adaptive timing based on latest density {latest_density:.2f} "
-                f"({density_class}) and weather {latest_weather}."
+                f"({density_class}), weather {latest_weather}, source {decision_source}."
             )
 
         plan = SignalPlan(
@@ -127,6 +138,7 @@ class SignalOptimizationService:
             red_seconds=self.settings.red_clearance_seconds,
             priority=priority,
             reason=reason,
+            decision_source=decision_source,
             expires_at=datetime.now(UTC) + timedelta(minutes=horizon_minutes),
         )
         saved = self.signals.create(plan)
@@ -136,6 +148,23 @@ class SignalOptimizationService:
         if self.settings.enable_pedestrian_phase:
             ped_order = len(["N", "S", "E", "W"])
             self.signals.create_phases([self._create_pedestrian_phase(saved, ped_order)])
+        self.signal_states.upsert(
+            intersection_id=intersection_id,
+            last_density=latest_density,
+            last_vehicle_count=int(decision["vehicle_count"]),
+            decision_source=decision_source,
+            last_signal_plan_id=saved.id,
+            last_detection_timestamp=decision["last_detection_timestamp"],
+        )
+        get_cache().set_json(
+            f"signal_state:{intersection_id}",
+            {
+                "last_density": latest_density,
+                "last_vehicle_count": int(decision["vehicle_count"]),
+                "decision_source": decision_source,
+                "last_signal_plan_id": str(saved.id),
+            },
+        )
         logger.info(
             "Signal optimized: intersection=%s, density=%.2f, green=%ds, priority=%s",
             intersection_id,
@@ -163,6 +192,7 @@ class SignalOptimizationService:
                 f"Emergency priority for {emergency.vehicle_type} approaching "
                 f"from {emergency.direction}; severity {emergency.severity}/10."
             ),
+            decision_source=DECISION_LIVE_DETECTION,
             expires_at=datetime.now(UTC) + timedelta(minutes=horizon_minutes),
         )
         saved = self.signals.create(plan)
@@ -173,6 +203,14 @@ class SignalOptimizationService:
 
         if hasattr(emergency, "id"):
             self.flush_emergency_corridor(emergency)
+
+        self.signal_states.upsert(
+            intersection_id=emergency.intersection_id,
+            last_density=1.0,
+            last_vehicle_count=0,
+            decision_source=DECISION_LIVE_DETECTION,
+            last_signal_plan_id=saved.id,
+        )
 
         return saved
 
@@ -209,6 +247,7 @@ class SignalOptimizationService:
                     f"(seq={corridor.sequence_order}, offset={offset_seconds}s). "
                     f"Vehicle: {emergency.vehicle_type} from {emergency.direction}."
                 ),
+                decision_source=DECISION_LIVE_DETECTION,
                 expires_at=datetime.now(UTC) + timedelta(
                     seconds=offset_seconds,
                     minutes=expires_after_minutes,
@@ -232,6 +271,57 @@ class SignalOptimizationService:
             )
 
         return plans
+
+    def _select_signal_decision(self, intersection_id: UUID, recent_obs: list) -> dict[str, object]:
+        now = datetime.now(UTC)
+        state = self.signal_states.get(intersection_id)
+        if state and state.last_detection_timestamp:
+            freshness = (now - state.last_detection_timestamp).total_seconds()
+            get_metrics().set_detection_freshness(str(intersection_id), freshness)
+            if freshness <= self.settings.detection_freshness_seconds:
+                return {
+                    "source": DECISION_LIVE_DETECTION,
+                    "density": state.last_density,
+                    "vehicle_count": state.last_vehicle_count,
+                    "avg_speed": None,
+                    "weather_condition": "clear",
+                    "last_detection_timestamp": state.last_detection_timestamp,
+                }
+
+        latest_prediction = self.predictions.latest(intersection_id=intersection_id, limit=1)
+        if latest_prediction:
+            prediction = latest_prediction[0]
+            get_metrics().record_fallback(DECISION_PREDICTION)
+            return {
+                "source": DECISION_PREDICTION,
+                "density": prediction.predicted_density,
+                "vehicle_count": prediction.predicted_vehicle_count,
+                "avg_speed": None,
+                "weather_condition": "clear",
+                "last_detection_timestamp": state.last_detection_timestamp if state else None,
+            }
+
+        if recent_obs:
+            latest = recent_obs[0]
+            get_metrics().record_fallback(DECISION_HISTORICAL)
+            return {
+                "source": DECISION_HISTORICAL,
+                "density": latest.density,
+                "vehicle_count": latest.vehicle_count,
+                "avg_speed": latest.avg_speed,
+                "weather_condition": latest.weather_condition,
+                "last_detection_timestamp": state.last_detection_timestamp if state else None,
+            }
+
+        get_metrics().record_fallback(DECISION_SAFE_FALLBACK)
+        return {
+            "source": DECISION_SAFE_FALLBACK,
+            "density": 0.2,
+            "vehicle_count": 0,
+            "avg_speed": None,
+            "weather_condition": "clear",
+            "last_detection_timestamp": None,
+        }
 
     def latest(self, intersection_id: UUID | None = None, limit: int = 10) -> list[SignalPlan]:
         return self.signals.latest(intersection_id=intersection_id, limit=limit)
