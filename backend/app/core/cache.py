@@ -4,6 +4,7 @@ from collections.abc import Callable
 from functools import lru_cache
 
 from app.core.config import get_settings
+from app.core.metrics import get_metrics
 
 try:
     import redis
@@ -38,7 +39,14 @@ class CacheClient:
             return None
         try:
             raw = self._client.get(key)
-            return json.loads(raw) if raw else None
+            metrics = get_metrics()
+            if raw:
+                if metrics.enabled:
+                    metrics.cache_hits.inc()
+                return json.loads(raw)
+            if metrics.enabled:
+                metrics.cache_misses.inc()
+            return None
         except Exception as exc:
             logger.warning("Cache read failed for key=%s: %s", key, exc)
             return None
