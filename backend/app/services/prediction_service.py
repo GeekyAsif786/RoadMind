@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_cache
 from app.ml.traffic_predictor import TrafficPredictor
 from app.models import Prediction
 from app.repositories.intersection_repository import IntersectionRepository
@@ -53,7 +54,7 @@ class PredictionService:
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-        return self.predictions.create(
+        prediction = self.predictions.create(
             Prediction(
                 intersection_id=payload.intersection_id,
                 horizon_minutes=payload.horizon_minutes,
@@ -62,3 +63,7 @@ class PredictionService:
                 model_version=version,
             )
         )
+        cache = get_cache()
+        cache.delete_prefix("dashboard:summary:")
+        cache.delete_prefix("prediction:latest:")
+        return prediction

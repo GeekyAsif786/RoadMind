@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
+from app.core.cache import get_cache
 from app.db.session import get_db
 from app.schemas import EmergencyCorridorRead, EmergencyCreate, EmergencyRead, SignalPlanRead
 from app.services.emergency_service import EmergencyService
@@ -13,7 +14,18 @@ router = APIRouter()
 
 @router.get("", response_model=list[EmergencyRead])
 def active_emergencies(intersection_id: UUID | None = None, db: Session = Depends(get_db)):
-    return EmergencyService(db).active(intersection_id=intersection_id)
+    cache = get_cache()
+    cache_key = f"emergencies:active:{intersection_id or 'all'}"
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    emergencies = [
+        EmergencyRead.model_validate(emergency).model_dump(mode="json")
+        for emergency in EmergencyService(db).active(intersection_id=intersection_id)
+    ]
+    cache.set_json(cache_key, emergencies)
+    return emergencies
 
 
 @router.post(
@@ -39,6 +51,11 @@ def clear_emergency(event_id: UUID, db: Session = Depends(get_db)):
 @router.patch("/{event_id}/clear", response_model=EmergencyRead, dependencies=[Depends(require_api_key)])
 def patch_clear_emergency(event_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).clear(event_id)
+
+
+@router.get("/{emergency_id}/corridor", response_model=list[EmergencyCorridorRead])
+def get_emergency_corridor(emergency_id: UUID, db: Session = Depends(get_db)):
+    return EmergencyService(db).corridors(emergency_id)
 
 
 @router.post(

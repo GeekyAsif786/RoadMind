@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_cache
 from app.repositories.emergency_repository import EmergencyRepository
 from app.repositories.intersection_repository import IntersectionRepository
 from app.repositories.prediction_repository import PredictionRepository
@@ -19,12 +20,18 @@ class DashboardService:
         self.predictions = PredictionRepository(db)
 
     def summary(self, intersection_id: UUID | None = None) -> DashboardSummary:
+        cache = get_cache()
+        cache_key = f"dashboard:summary:{intersection_id or 'all'}"
+        cached = cache.get_json(cache_key)
+        if cached is not None:
+            return DashboardSummary.model_validate(cached)
+
         observations = self.traffic.latest(intersection_id=intersection_id, limit=12)
         signal_plans = self.signals.latest(intersection_id=intersection_id, limit=8)
         emergencies = self.emergencies.latest(intersection_id=intersection_id, limit=8)
         predictions = self.predictions.latest(intersection_id=intersection_id, limit=8)
         latest = observations[0] if observations else None
-        return DashboardSummary(
+        summary = DashboardSummary(
             intersections=self.intersections.count(),
             active_emergencies=len(self.emergencies.active(intersection_id)),
             latest_density=latest.density if latest else None,
@@ -35,3 +42,5 @@ class DashboardService:
             predictions=predictions,
             metadata={"status": "operational", "intersection_id": str(intersection_id) if intersection_id else None},
         )
+        cache.set_json(cache_key, summary.model_dump(mode="json"))
+        return summary

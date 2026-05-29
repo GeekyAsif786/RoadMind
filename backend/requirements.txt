@@ -10,3 +10,4 @@ scikit-learn==1.6.0
 joblib==1.4.2
 alembic==1.14.0
 workalendar==17.0.0
+redis==5.2.1

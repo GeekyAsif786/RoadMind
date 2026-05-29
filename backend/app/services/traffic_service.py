@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_cache
 from app.models import TrafficObservation
 from app.repositories.intersection_repository import IntersectionRepository
 from app.repositories.traffic_repository import TrafficRepository
@@ -42,7 +43,11 @@ class TrafficService:
             source=payload.source,
             captured_at=payload.captured_at or datetime.now(UTC),
         )
-        return self.traffic.create(observation)
+        saved = self.traffic.create(observation)
+        cache = get_cache()
+        cache.delete_prefix("dashboard:summary:")
+        cache.delete_prefix("traffic:latest:")
+        return saved
 
     def latest(self, intersection_id: UUID | None = None, limit: int = 20) -> list[TrafficObservation]:
         return self.traffic.latest(intersection_id=intersection_id, limit=limit)

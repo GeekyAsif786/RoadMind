@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: traffic-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -29,12 +40,17 @@ services:
       AUTO_CREATE_TABLES: "true"
       ENABLE_AUTH: "false"
       API_KEY: "dev-insecure-key-change-me"
+      REDIS_URL: redis://redis:6379/0
+      CACHE_ENABLED: "true"
+      CACHE_TTL_SECONDS: "30"
       ENABLE_YOLO: "false"
       YOLO_MODEL_PATH: yolov8n.pt
       MODEL_DIR: /app/runtime_models
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8000:8000"
