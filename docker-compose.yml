@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: traffic-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -29,12 +40,26 @@ services:
       AUTO_CREATE_TABLES: "true"
       ENABLE_AUTH: "false"
       API_KEY: "dev-insecure-key-change-me"
+      REDIS_URL: redis://redis:6379/0
+      CACHE_ENABLED: "true"
+      CACHE_TTL_SECONDS: "30"
+      JOB_QUEUE_ENABLED: "true"
+      TRAFFIC_MODEL: xgboost
+      DETECTION_FRESHNESS_SECONDS: "10"
+      DETECTION_WORKER_COUNT: "2"
+      DETECTION_BATCH_SIZE: "4"
+      UPLOAD_MAX_BYTES: "10485760"
+      RATE_LIMIT_PER_MINUTE: "120"
+      METRICS_ENABLED: "true"
       ENABLE_YOLO: "false"
       YOLO_MODEL_PATH: yolov8n.pt
+      YOLO_DEVICE: cpu
       MODEL_DIR: /app/runtime_models
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -42,6 +67,26 @@ services:
       - backend-models:/app/runtime_models
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build:
+      context: ./backend
+    container_name: traffic-worker
+    environment:
+      DATABASE_URL: postgresql+psycopg://traffic:traffic@postgres:5432/traffic_manager
+      REDIS_URL: redis://redis:6379/0
+      CACHE_ENABLED: "true"
+      JOB_QUEUE_ENABLED: "true"
+      TRAFFIC_MODEL: xgboost
+      MODEL_DIR: /app/runtime_models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend-models:/app/runtime_models
+    command: rq worker roadmind --url redis://redis:6379/0
 
   frontend:
     build:

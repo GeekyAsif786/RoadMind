@@ -9,7 +9,8 @@ import joblib
 import numpy as np
 from fastapi import HTTPException, status
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.multioutput import MultiOutputRegressor
 
 from app.core.config import get_settings
 from app.models import TrafficObservation
@@ -41,17 +42,24 @@ class IntersectionEncoder:
         return len(self._map)
 
 
-class TrafficPredictor:
+class BaseTrafficPredictor:
+    model_key = "base"
+    version_prefix = "model"
+
     def __init__(self) -> None:
         self.settings = get_settings()
-        self.model_path = Path(self.settings.model_dir) / "traffic_random_forest.joblib"
-        self.version_path = Path(self.settings.model_dir) / "traffic_random_forest.version"
+        self.model_path = Path(self.settings.model_dir) / f"traffic_{self.model_key}.joblib"
+        self.version_path = Path(self.settings.model_dir) / f"traffic_{self.model_key}.version"
         self.encoder_path = Path(self.settings.model_dir) / "intersection_encoder.json"
+        self.metrics_path = Path(self.settings.model_dir) / f"traffic_{self.model_key}.metrics.json"
         self.encoder = IntersectionEncoder(self.encoder_path)
-        self._cached_model: RandomForestRegressor | None = None
+        self._cached_model: object | None = None
         self._cached_version: str | None = None
 
-    def train(self, observations: list[TrafficObservation]) -> tuple[str, int, float | None]:
+    def build_model(self) -> object:
+        raise NotImplementedError
+
+    def train(self, observations: list[TrafficObservation]) -> tuple[str, int, float | None, dict[str, float | None]]:
         if len(observations) < MIN_TRAINING_SAMPLES:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -67,30 +75,32 @@ class TrafficPredictor:
         features = self._build_features(ordered_observations)
         targets = np.array([[row.density, row.vehicle_count] for row in ordered_observations])
 
-        model = RandomForestRegressor(
-            n_estimators=80,
-            random_state=42,
-            min_samples_leaf=2,
-            max_depth=12,
-            n_jobs=1,
-        )
+        model = self.build_model()
         score: float | None = None
+        metrics: dict[str, float | None] = {"mae": None, "rmse": None, "r2": None}
         if len(observations) >= 12:
             split_idx = int(len(features) * 0.75)
             x_train, x_test = features[:split_idx], features[split_idx:]
             y_train, y_test = targets[:split_idx], targets[split_idx:]
             model.fit(x_train, y_train)
-            score = float(r2_score(y_test, model.predict(x_test)))
+            predicted = model.predict(x_test)
+            score = float(r2_score(y_test, predicted))
+            metrics = {
+                "mae": float(mean_absolute_error(y_test, predicted)),
+                "rmse": float(np.sqrt(mean_squared_error(y_test, predicted))),
+                "r2": score,
+            }
         else:
             model.fit(features, targets)
 
-        version = f"rf-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        version = f"{self.version_prefix}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         joblib.dump(model, self.model_path)
         self._cached_model = model
         self._cached_version = version
         self.version_path.write_text(version, encoding="utf-8")
+        self.metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
         logger.info("Model trained: version=%s, score=%s", version, score)
-        return version, len(observations), score
+        return version, len(observations), score, metrics
 
     def predict(
         self,
@@ -127,7 +137,7 @@ class TrafficPredictor:
         version = self.version_path.read_text(encoding="utf-8").strip() if self.version_path.exists() else "unknown"
         return float(np.clip(density, 0, 1)), max(float(vehicle_count), 0.0), version
 
-    def _load_model(self) -> RandomForestRegressor:
+    def _load_model(self) -> object:
         if not self.model_path.exists():
             raise ValueError("Prediction model has not been trained")
         current_version = (
@@ -197,3 +207,83 @@ class TrafficPredictor:
                 )
             )
         return np.array(rows, dtype=float)
+
+
+class RandomForestPredictor(BaseTrafficPredictor):
+    model_key = "random_forest"
+    version_prefix = "rf"
+
+    def build_model(self) -> RandomForestRegressor:
+        return RandomForestRegressor(
+            n_estimators=80,
+            random_state=42,
+            min_samples_leaf=2,
+            max_depth=12,
+            n_jobs=1,
+        )
+
+
+class XGBoostPredictor(BaseTrafficPredictor):
+    model_key = "xgboost"
+    version_prefix = "xgb"
+
+    def build_model(self) -> object:
+        try:
+            from xgboost import XGBRegressor
+        except Exception as exc:
+            logger.warning(
+                "TRAFFIC_MODEL=xgboost but xgboost is unavailable; falling back to RandomForest: %s",
+                exc,
+            )
+            self.model_key = RandomForestPredictor.model_key
+            self.version_prefix = RandomForestPredictor.version_prefix
+            return RandomForestPredictor().build_model()
+
+        base_model = XGBRegressor(
+            n_estimators=120,
+            max_depth=6,
+            learning_rate=0.08,
+            subsample=0.9,
+            objective="reg:squarederror",
+            random_state=42,
+        )
+        return MultiOutputRegressor(base_model)
+
+
+class TrafficPredictor:
+    def __init__(self) -> None:
+        settings = get_settings()
+        requested_model = settings.traffic_model.lower().strip()
+        if requested_model == "xgboost":
+            self.strategy: BaseTrafficPredictor = XGBoostPredictor()
+        else:
+            self.strategy = RandomForestPredictor()
+
+    def train(self, observations: list[TrafficObservation]) -> tuple[str, int, float | None, dict[str, float | None]]:
+        return self.strategy.train(observations)
+
+    def predict(
+        self,
+        intersection_id: UUID,
+        captured_at: datetime,
+        latest_vehicle_count: int,
+        weather_condition: str = "clear",
+        pcu_total: float | None = None,
+        direction: str = "ALL",
+        density: float = 0.0,
+        avg_speed: float | None = None,
+        hour_of_day: int | None = None,
+        day_of_week: int | None = None,
+    ) -> tuple[float, float, str]:
+        return self.strategy.predict(
+            intersection_id,
+            captured_at,
+            latest_vehicle_count,
+            weather_condition,
+            pcu_total,
+            direction,
+            density,
+            avg_speed,
+            hour_of_day,
+            day_of_week,
+        )

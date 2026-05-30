@@ -279,6 +279,8 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: 16px;
 }
 
@@ -293,6 +295,8 @@ select {
   background: #eef2ed;
   color: #51605a;
   font-weight: 700;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .signal-reason {

@@ -98,6 +98,7 @@ class SignalPlanRead(BaseModel):
     red_seconds: int
     priority: str
     reason: str
+    decision_source: str = "historical_observation"
     expires_at: datetime | None
     created_at: datetime
     phases: list[SignalPhaseRead] = Field(default_factory=list)
@@ -140,6 +141,11 @@ class PredictionTrainResponse(BaseModel):
     model_version: str
     samples: int
     score: float | None
+    job_id: str | None = None
+    status: str | None = None
+    mae: float | None = None
+    rmse: float | None = None
+    r2: float | None = None
 
 
 class PredictionRequest(BaseModel):
@@ -179,3 +185,17 @@ class DashboardSummary(BaseModel):
     emergencies: list[EmergencyRead]
     predictions: list[PredictionRead]
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobStatusRead(BaseModel):
+    id: str
+    status: str
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class DetectionQueueStatus(BaseModel):
+    queued_frames: int
+    active_workers: int
+    batch_size: int
+    fallback_mode: str

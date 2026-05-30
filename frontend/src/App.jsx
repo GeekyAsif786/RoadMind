@@ -46,6 +46,8 @@ const DAY_OF_WEEK_OPTIONS = [
 ];
 const PCU_QUANTITY_SLIDER_MAX = 100;
 const PCU_CALCULATOR_DEFAULT_POSITION = { right: 24, bottom: 24 };
+const TRAINING_POLL_INTERVAL_MS = 1500;
+const TRAINING_MAX_POLLS = 80;
 const PCU_VEHICLE_OPTIONS = [
   { key: "two_wheeler", label: "Two-wheeler", factor: 0.5 },
   { key: "auto_rickshaw", label: "Auto rickshaw", factor: 0.8 },
@@ -69,7 +71,8 @@ const emptySummary = {
   signal_plans: [],
   observations: [],
   emergencies: [],
-  predictions: []
+  predictions: [],
+  metadata: {}
 };
 
 function percent(value) {
@@ -184,6 +187,27 @@ export default function App() {
     }
   }
 
+  async function trainPredictionModel() {
+    const queued = await api.trainPrediction();
+    if (!queued.job_id) {
+      return queued;
+    }
+
+    setNotice({ type: "success", message: "Model training queued" });
+    for (let attempt = 0; attempt < TRAINING_MAX_POLLS; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, TRAINING_POLL_INTERVAL_MS));
+      const job = await api.jobStatus(queued.job_id);
+      if (job.status === "finished") {
+        return job.result ?? queued;
+      }
+      if (job.status === "failed" || job.status === "not_found") {
+        throw new Error(job.error || "Model training failed");
+      }
+    }
+
+    throw new Error("Model training did not finish before the status check timed out");
+  }
+
   function requireIntersection() {
     if (!selectedIntersection) throw new Error("Create or select an intersection first");
     return selectedIntersection;
@@ -266,6 +290,7 @@ export default function App() {
           <div className="signal-readout">
             <strong>{latestPlan?.green_seconds ?? 0}s</strong>
             <span>{latestPlan?.priority ?? "normal"}</span>
+            <span>{latestPlan?.decision_source ?? summary.metadata?.signal_decision_source ?? "safe_fallback"}</span>
           </div>
           <p className="signal-reason">{latestPlan?.reason ?? "No active timing plan"}</p>
           <button
@@ -392,7 +417,7 @@ export default function App() {
           <div className="button-row">
             <button
               disabled={busy}
-              onClick={() => runAction(api.trainPrediction, "RandomForest model trained")}
+              onClick={() => runAction(trainPredictionModel, "Model trained successfully")}
             >
               <GitBranch size={18} />
               Train
