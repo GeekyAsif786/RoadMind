@@ -182,3 +182,6 @@ class ModelEvaluation(Base, TimestampMixin):
     mae: Mapped[float | None] = mapped_column(Float)
     rmse: Mapped[float | None] = mapped_column(Float)
     r2: Mapped[float | None] = mapped_column(Float)
+    # Nullable per-target metrics + walk-forward summary. The mae/rmse/r2 columns
+    # above remain as coarse summary fields for backward compatibility.
+    metrics_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

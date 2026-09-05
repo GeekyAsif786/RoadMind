@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS model_evaluations (
     mae DOUBLE PRECISION,
     rmse DOUBLE PRECISION,
     r2 DOUBLE PRECISION,
+    metrics_detail JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
