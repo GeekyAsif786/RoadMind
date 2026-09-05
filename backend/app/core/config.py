@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_ttl_seconds: int = 30
     job_queue_enabled: bool = False
+    session_ttl_seconds: int = 28800
+    session_cookie_name: str = "roadmind_session"
+    session_cookie_secure: bool = False
+    session_cookie_samesite: str = "lax"
     traffic_model: str = "xgboost"
     detection_freshness_seconds: int = 10
     detection_worker_count: int = 2

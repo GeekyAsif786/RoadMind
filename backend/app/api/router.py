@@ -1,8 +1,20 @@
 from fastapi import APIRouter
 
-from app.api import dashboard, detections, emergencies, health, intersections, jobs, predictions, signals, traffic
+from app.api import (
+    auth,
+    dashboard,
+    detections,
+    emergencies,
+    health,
+    intersections,
+    jobs,
+    predictions,
+    signals,
+    traffic,
+)
 
 api_router = APIRouter()
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(intersections.router, prefix="/intersections", tags=["intersections"])
 api_router.include_router(traffic.router, prefix="/traffic", tags=["traffic"])
