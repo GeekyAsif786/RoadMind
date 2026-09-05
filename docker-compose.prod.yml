@@ -6,6 +6,10 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
+  # IMPORTANT: API_KEY must be supplied here via .env or a secret manager.
+  # It is intentionally NOT defaulted in this file. If left unset, the backend
+  # would inherit "dev-insecure-key-change-me" from docker-compose.yml; the app
+  # now refuses to start in production with that default (see app/core/config.py).
   backend:
     restart: unless-stopped
     environment:
@@ -14,6 +18,7 @@ services:
       ENABLE_AUTH: "true"
       CACHE_ENABLED: "true"
       JOB_QUEUE_ENABLED: "true"
+      API_KEY: "${API_KEY:?API_KEY must be set for production (via .env or secret)}"
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 

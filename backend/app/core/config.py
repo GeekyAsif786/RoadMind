@@ -5,13 +5,16 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_INSECURE_API_KEY = "dev-insecure-key-change-me"
+
+
 class Settings(BaseSettings):
     app_name: str = "Smart Traffic Optimization System"
     environment: str = "development"
     log_level: str = Field(default="INFO")
     database_url: str = "postgresql+psycopg://traffic:traffic@localhost:5432/traffic_manager"
     auto_create_tables: bool = True
-    api_key: str = Field(default="dev-insecure-key-change-me")
+    api_key: str = Field(default=DEFAULT_INSECURE_API_KEY)
     enable_auth: bool = Field(default=False)
     redis_url: str = ""
     cache_enabled: bool = False
@@ -50,4 +53,17 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     settings.model_dir.mkdir(parents=True, exist_ok=True)
+    # Fail fast rather than silently booting an insecure production instance:
+    # docker-compose.prod.yml enables auth but does not override API_KEY, so it
+    # would otherwise inherit the base compose file's dev default.
+    if (
+        settings.environment.lower() == "production"
+        and settings.api_key == DEFAULT_INSECURE_API_KEY
+    ):
+        raise RuntimeError(
+            "Refusing to start in production with the default development API key. "
+            "Set a real API_KEY via .env or a secret before deploying "
+            "(ENVIRONMENT=production is set but API_KEY is still "
+            f"'{DEFAULT_INSECURE_API_KEY}')."
+        )
     return settings
