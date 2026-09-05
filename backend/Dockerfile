@@ -18,6 +18,16 @@ COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 COPY app ./app
 
+# Run as a non-root user. Create the writable model dir (MODEL_DIR defaults to
+# /app/runtime_models) BEFORE dropping privileges and give appuser ownership of
+# /app so the app can create/write model artifacts. Docker seeds a fresh named
+# volume mounted here from the image path, inheriting this ownership.
+RUN useradd -m appuser \
+    && mkdir -p /app/runtime_models \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

@@ -34,6 +34,12 @@ class CacheClient:
     def enabled(self) -> bool:
         return self._client is not None
 
+    @property
+    def raw_client(self) -> object | None:
+        """Underlying redis client (or None). Used by the rate limiter so it can
+        share the same connection instead of opening its own."""
+        return self._client
+
     def get_json(self, key: str) -> object | None:
         if self._client is None:
             return None

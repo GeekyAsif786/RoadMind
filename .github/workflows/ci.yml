@@ -1,0 +1,56 @@
+name: CI
+
+# Runs the three "Verification Commands" documented in README.md on every
+# push and pull request:
+#   1. Backend syntax check (py_compile of the six listed modules)
+#   2. Frontend build check (npm --prefix frontend run build)
+#   3. Backend tests (pip install -r requirements.txt && pytest)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-syntax:
+    name: Backend syntax check (py_compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Command 1 from README.md "Verification Commands".
+      - name: python -m py_compile (six modules)
+        working-directory: backend
+        run: |
+          python -m py_compile app/core/config.py app/services/density_service.py app/services/optimization_service.py app/services/traffic_service.py app/models/domain.py app/schemas/dto.py
+
+  frontend-build:
+    name: Frontend build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend dependencies
+        run: npm --prefix frontend install
+      # Command 2 from README.md "Verification Commands".
+      - name: npm --prefix frontend run build
+        run: npm --prefix frontend run build
+
+  backend-tests:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Command 3 from README.md "Verification Commands".
+      - name: pip install -r requirements.txt && pytest
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+          pytest
