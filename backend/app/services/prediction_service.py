@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -36,6 +36,7 @@ class PredictionService:
                 mae=metrics.get("mae"),
                 rmse=metrics.get("rmse"),
                 r2=metrics.get("r2"),
+                metrics_detail=metrics.get("metrics_detail"),
             )
         )
         return version, samples, score, metrics
@@ -51,13 +52,16 @@ class PredictionService:
         latest_density = latest[0].density if latest else 0.0
         latest_speed = latest[0].avg_speed if latest else None
         latest_pcu = latest[0].pcu_total if latest and payload.pcu_total is None else payload.pcu_total
-        target_time = datetime.now(UTC) + timedelta(minutes=payload.horizon_minutes)
+        # Features now describe "now" (the current state). The horizon is passed
+        # explicitly as a feature rather than baked into a future timestamp.
+        current_time = datetime.now(UTC)
 
         try:
             density, vehicle_count, version = self.predictor.predict(
                 payload.intersection_id,
-                target_time,
+                current_time,
                 latest_count,
+                payload.horizon_minutes,
                 payload.weather_condition,
                 latest_pcu,
                 payload.direction,
