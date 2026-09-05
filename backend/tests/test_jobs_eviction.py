@@ -5,9 +5,6 @@ tests confirm that dict is bounded (oldest terminal jobs evicted) and that
 still-running jobs are never dropped.
 """
 
-import threading
-import time
-
 import pytest
 
 
@@ -28,18 +25,30 @@ def queue(monkeypatch, tmp_path):
     get_settings.cache_clear()
 
 
+class _InlineExecutor:
+    """Runs submitted callables synchronously so job status is deterministic."""
+
+    def submit(self, fn, *args, **kwargs):
+        fn(*args, **kwargs)
+
+    def shutdown(self, wait=True):
+        pass
+
+
 def test_eviction_keeps_dict_bounded_and_drops_oldest_finished(queue):
     from app.core.jobs import LOCAL_JOBS_MAX
 
-    # Enqueue well over the cap of trivial jobs and let them finish.
+    # Run jobs inline so each enqueued job is already 'finished' before the next
+    # enqueue() runs eviction. This removes any dependence on thread timing.
+    queue._executor = _InlineExecutor()
+
     n = LOCAL_JOBS_MAX + 50
     ids = [queue.enqueue("noop", lambda: {"ok": True}) for _ in range(n)]
-    queue._executor.shutdown(wait=True)  # ensure all complete
 
     # The dict must never exceed the cap.
     assert len(queue._local_jobs) <= LOCAL_JOBS_MAX
 
-    # The oldest jobs should have been evicted; the most recent should remain.
+    # Oldest finished jobs evicted; most recent retained.
     assert ids[-1] in queue._local_jobs
     assert ids[0] not in queue._local_jobs
 
@@ -47,34 +56,21 @@ def test_eviction_keeps_dict_bounded_and_drops_oldest_finished(queue):
 def test_running_jobs_are_not_evicted(queue):
     from app.core.jobs import LOCAL_JOBS_MAX
 
-    release = threading.Event()
+    # Deterministic: seed two jobs that are 'started' (as if still running), then
+    # flood with inline (immediately finished) jobs. Eviction on each enqueue
+    # must skip the started jobs even though they are the oldest entries.
+    queue._executor = _InlineExecutor()
+    queue._local_jobs.clear()
+    queue._local_jobs["run1"] = {"id": "run1", "status": "started", "result": None, "error": None}
+    queue._local_jobs["run2"] = {"id": "run2", "status": "started", "result": None, "error": None}
 
-    def _blocking_job():
-        release.wait(timeout=10)
-        return {"done": True}
-
-    # Start a couple of long-running jobs (they stay "started" until released).
-    running_ids = [queue.enqueue("block", _blocking_job) for _ in range(2)]
-
-    # Give the executor a moment to mark them "started".
-    for _ in range(50):
-        if all(queue._local_jobs[j]["status"] == "started" for j in running_ids):
-            break
-        time.sleep(0.02)
-
-    # Now flood with fast finished jobs to trigger eviction well past the cap.
     for _ in range(LOCAL_JOBS_MAX + 50):
         queue.enqueue("noop", lambda: {"ok": True})
-        # let the fast ones finish so they become terminal (evictable)
-        time.sleep(0)
-    queue._executor.shutdown(wait=False)
 
-    # Running jobs must survive eviction even though they are the oldest.
-    for j in running_ids:
-        assert j in queue._local_jobs, "a still-running job was evicted"
-
-    # Release and drain.
-    release.set()
+    assert len(queue._local_jobs) <= LOCAL_JOBS_MAX
+    # Running jobs survive despite being the oldest entries.
+    assert "run1" in queue._local_jobs
+    assert "run2" in queue._local_jobs
 
 
 def test_evict_directly_skips_running(queue):
