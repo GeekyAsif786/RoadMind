@@ -17,6 +17,13 @@ except ImportError:  # pragma: no cover - optional queue dependencies are instal
 
 logger = logging.getLogger(__name__)
 
+# Cap on the number of locally-tracked jobs when Redis/RQ is not configured.
+# Without this the _local_jobs dict grows forever. Eviction happens
+# opportunistically on enqueue (no background thread) and is oldest-first,
+# skipping jobs that are still running so in-flight work is never dropped.
+LOCAL_JOBS_MAX = 200
+_TERMINAL_STATUSES = frozenset({"finished", "failed"})
+
 
 class JobQueue:
     def __init__(self) -> None:
@@ -46,8 +53,26 @@ class JobQueue:
 
         job_id = str(uuid4())
         self._local_jobs[job_id] = {"id": job_id, "status": "queued", "result": None, "error": None}
+        self._evict_local_jobs()
         self._executor.submit(self._run_local, job_id, func, *args, **kwargs)
         return job_id
+
+    def _evict_local_jobs(self) -> None:
+        """Cap _local_jobs at LOCAL_JOBS_MAX, evicting oldest terminal jobs first.
+
+        Dicts preserve insertion order, so iterating yields oldest-first. Jobs
+        that are still queued/started are skipped so running work is never
+        dropped. Called opportunistically on each enqueue (no background thread).
+        """
+        overflow = len(self._local_jobs) - LOCAL_JOBS_MAX
+        if overflow <= 0:
+            return
+        for job_id in list(self._local_jobs.keys()):
+            if overflow <= 0:
+                break
+            if self._local_jobs[job_id].get("status") in _TERMINAL_STATUSES:
+                del self._local_jobs[job_id]
+                overflow -= 1
 
     def status(self, job_id: str) -> dict[str, object]:
         if self._redis_connection is not None and Job is not None:
