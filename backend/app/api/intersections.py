@@ -8,11 +8,19 @@ from app.core.cache import get_cache
 from app.db.session import get_db
 from app.repositories.intersection_repository import IntersectionRepository
 from app.schemas import IntersectionCreate, IntersectionRead
+from app.core.auth import (
+    require_admin,
+    require_authenticated_user,
+)
 
 router = APIRouter()
 
 
-@router.get("", response_model=list[IntersectionRead])
+@router.get(
+    "",
+    response_model=list[IntersectionRead],
+    dependencies=[Depends(require_authenticated_user)],
+)
 def list_intersections(db: Session = Depends(get_db)):
     cache = get_cache()
     cache_key = "intersections:list"
@@ -32,7 +40,7 @@ def list_intersections(db: Session = Depends(get_db)):
     "",
     response_model=IntersectionRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key)], #TODO dependencies=[Depends(require_admin)]
 )
 def create_intersection(payload: IntersectionCreate, db: Session = Depends(get_db)):
     intersection = IntersectionRepository(db).create(payload)
@@ -42,7 +50,11 @@ def create_intersection(payload: IntersectionCreate, db: Session = Depends(get_d
     return intersection
 
 
-@router.get("/{intersection_id}", response_model=IntersectionRead)
+@router.get(
+    "/{intersection_id}",
+    response_model=IntersectionRead,
+    dependencies=[Depends(require_authenticated_user)],
+)
 def get_intersection(intersection_id: UUID, db: Session = Depends(get_db)):
     cache = get_cache()
     cache_key = f"intersections:{intersection_id}"

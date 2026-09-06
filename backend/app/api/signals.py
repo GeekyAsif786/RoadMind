@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-
+from app.core.auth import require_authenticated_user
 from app.core.auth import require_api_key
 from app.core.cache import get_cache
 from app.db.session import get_db
@@ -12,7 +12,7 @@ from app.services.optimization_service import SignalOptimizationService
 router = APIRouter()
 
 
-@router.get("/plans", response_model=list[SignalPlanRead])
+@router.get("/plans", response_model=list[SignalPlanRead],dependencies=[Depends(require_authenticated_user)])
 def latest_signal_plans(
     intersection_id: UUID | None = None,
     limit: int = Query(default=10, ge=1, le=100),

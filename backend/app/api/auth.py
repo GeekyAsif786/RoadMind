@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Cookie
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -13,6 +13,22 @@ router = APIRouter()
 
 SESSION_COOKIE_PATH = "/"
 
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    response: Response,
+    roadmind_session: str | None = Cookie(default=None),
+) -> None:
+    if roadmind_session:
+        session_store = get_session_store()
+        session_store.delete_session(roadmind_session)
+
+    settings = get_settings()
+
+    response.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+    )
 
 @router.get("/me", response_model=UserRead)
 def me(

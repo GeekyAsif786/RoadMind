@@ -1,5 +1,5 @@
 from uuid import UUID
-
+from app.core.auth import require_authenticated_user
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,6 @@ async def detect_from_image(
     )
 
 
-@router.get("/queue/status", response_model=DetectionQueueStatus)
+@router.get("/queue/status", response_model=DetectionQueueStatus,dependencies=[Depends(require_authenticated_user)])
 def detection_queue_status():
     return detection_queue.status()

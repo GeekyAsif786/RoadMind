@@ -1,13 +1,20 @@
 import secrets
+from collections.abc import Callable
+from typing import Final
 
-from fastapi import Cookie, Header, HTTPException, status
+
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.sessions import get_session_store
-from app.db.session import SessionLocal
+from app.db.session import get_db
 from app.models.domain import User
 
+ROLE_ADMIN: Final[str] = "admin"
+ROLE_OPERATOR: Final[str] = "operator"
+ROLE_VIEWER: Final[str] = "viewer"
 
 async def require_api_key(
     x_api_key: str = Header(default=""),
@@ -27,6 +34,7 @@ async def require_api_key(
 
 def get_current_user(
     roadmind_session: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
 ) -> User:
     if not roadmind_session:
         raise HTTPException(
@@ -43,10 +51,9 @@ def get_current_user(
             detail="Not authenticated",
         )
 
-    with SessionLocal() as db:
-        user = db.scalar(
-            select(User).where(User.id == user_id)
-        )
+    user = db.scalar(
+        select(User).where(User.id == user_id)
+    )
 
     if user is None or not user.is_active:
         raise HTTPException(
@@ -55,3 +62,51 @@ def get_current_user(
         )
 
     return user
+
+def check_role(
+    user: User,
+    allowed_roles: set[str],
+) -> User:
+    if user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+    return user
+
+
+def require_authenticated_user(
+    user: User = Depends(get_current_user),
+) -> User:
+    return check_role(
+        user,
+        {
+            ROLE_VIEWER,
+            ROLE_OPERATOR,
+            ROLE_ADMIN,
+        },
+    )
+
+
+def require_operator_or_admin(
+    user: User = Depends(get_current_user),
+) -> User:
+    return check_role(
+        user,
+        {
+            ROLE_OPERATOR,
+            ROLE_ADMIN,
+        },
+    )
+
+
+def require_admin(
+    user: User = Depends(get_current_user),
+) -> User:
+    return check_role(
+        user,
+        {
+            ROLE_ADMIN,
+        },
+    )

@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from app.core.auth import require_authenticated_user
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
@@ -12,7 +13,7 @@ from app.services.traffic_service import TrafficService
 router = APIRouter()
 
 
-@router.get("/observations", response_model=list[TrafficObservationRead])
+@router.get("/observations", response_model=list[TrafficObservationRead], dependencies=[Depends(require_authenticated_user)])
 def latest_observations(
     intersection_id: UUID | None = None,
     limit: int = Query(default=20, ge=1, le=200),

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
-
+from app.core.auth import require_authenticated_user
 from app.core.auth import require_api_key
 from app.core.cache import get_cache
 from app.db.session import get_db
@@ -12,7 +12,7 @@ from app.services.emergency_service import EmergencyService
 router = APIRouter()
 
 
-@router.get("", response_model=list[EmergencyRead])
+@router.get("", response_model=list[EmergencyRead],dependencies=[Depends(require_authenticated_user)])
 def active_emergencies(intersection_id: UUID | None = None, db: Session = Depends(get_db)):
     cache = get_cache()
     cache_key = f"emergencies:active:{intersection_id or 'all'}"
