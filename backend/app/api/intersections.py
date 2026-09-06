@@ -35,12 +35,11 @@ def list_intersections(db: Session = Depends(get_db)):
     cache.set_json(cache_key, intersections)
     return intersections
 
-
 @router.post(
     "",
     response_model=IntersectionRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)], #TODO dependencies=[Depends(require_admin)]
+    dependencies=[Depends(require_admin)],
 )
 def create_intersection(payload: IntersectionCreate, db: Session = Depends(get_db)):
     intersection = IntersectionRepository(db).create(payload)

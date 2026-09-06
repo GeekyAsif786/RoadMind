@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 from app.core.auth import require_authenticated_user
+from app.core.auth import require_operator_or_admin
 from app.core.auth import require_api_key
 from app.core.cache import get_cache
 from app.db.session import get_db
@@ -32,23 +33,23 @@ def active_emergencies(intersection_id: UUID | None = None, db: Session = Depend
     "",
     response_model=EmergencyRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_operator_or_admin)],
 )
 def create_emergency(payload: EmergencyCreate, db: Session = Depends(get_db)):
     return EmergencyService(db).create(payload)
 
 
-@router.post("/clear-active", response_model=SignalPlanRead, dependencies=[Depends(require_api_key)])
+@router.post("/clear-active", response_model=SignalPlanRead, dependencies=[Depends(require_operator_or_admin)])
 def clear_active_emergencies(intersection_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).clear_active_for_intersection(intersection_id)
 
 
-@router.post("/{event_id}/clear", response_model=EmergencyRead, dependencies=[Depends(require_api_key)])
+@router.post("/{event_id}/clear", response_model=EmergencyRead, dependencies=[Depends(require_operator_or_admin)])
 def clear_emergency(event_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).clear(event_id)
 
 
-@router.patch("/{event_id}/clear", response_model=EmergencyRead, dependencies=[Depends(require_api_key)])
+@router.patch("/{event_id}/clear", response_model=EmergencyRead, dependencies=[Depends(require_operator_or_admin)])
 def patch_clear_emergency(event_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).clear(event_id)
 
