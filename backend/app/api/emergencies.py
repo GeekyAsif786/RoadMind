@@ -54,7 +54,11 @@ def patch_clear_emergency(event_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).clear(event_id)
 
 
-@router.get("/{emergency_id}/corridor", response_model=list[EmergencyCorridorRead])
+@router.get(
+    "/{emergency_id}/corridor",
+    response_model=list[EmergencyCorridorRead],
+    dependencies=[Depends(require_authenticated_user)],
+)
 def get_emergency_corridor(emergency_id: UUID, db: Session = Depends(get_db)):
     return EmergencyService(db).corridors(emergency_id)
 
@@ -62,7 +66,7 @@ def get_emergency_corridor(emergency_id: UUID, db: Session = Depends(get_db)):
 @router.post(
     "/{emergency_id}/corridor",
     response_model=list[EmergencyCorridorRead],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_operator_or_admin)],
 )
 def create_emergency_corridor(
     emergency_id: UUID,
