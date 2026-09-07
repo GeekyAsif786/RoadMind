@@ -38,7 +38,6 @@ class User(Base, TimestampMixin):
 
 class DeviceCredential(Base, TimestampMixin):
     __tablename__ = "device_credentials"
-
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -54,6 +53,12 @@ class DeviceCredential(Base, TimestampMixin):
         String(120),
         nullable=False,
         unique=True,
+    )
+    credential_id: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        unique=True,
+        index=True,
     )
     credential_hash: Mapped[str] = mapped_column(
         String(255),

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 from app.core.auth import require_authenticated_user
 from app.core.auth import require_operator_or_admin
-from app.core.auth import require_api_key
 from app.core.cache import get_cache
 from app.db.session import get_db
 from app.schemas import EmergencyCorridorRead, EmergencyCreate, EmergencyRead, SignalPlanRead

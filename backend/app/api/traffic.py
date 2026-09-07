@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.core.auth import require_authenticated_user
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_api_key
+from app.core.auth import require_device_scope
 from app.core.cache import get_cache
 from app.db.session import get_db
 from app.schemas import TrafficObservationCreate, TrafficObservationRead
@@ -37,7 +37,7 @@ def latest_observations(
     "/observations",
     response_model=TrafficObservationRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_device_scope("telemetry:write"))],
 )
 def create_observation(payload: TrafficObservationCreate, db: Session = Depends(get_db)):
     return TrafficService(db).create_observation(payload)

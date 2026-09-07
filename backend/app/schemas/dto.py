@@ -199,3 +199,27 @@ class DetectionQueueStatus(BaseModel):
     active_workers: int
     batch_size: int
     fallback_mode: str
+
+class DeviceCredentialCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    scopes: list[str] = Field(min_length=1)
+    intersection_id: UUID | None = None
+
+
+class DeviceCredentialRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    intersection_id: UUID | None
+    name: str
+    credential_id: str
+    scopes: list[str]
+    is_active: bool
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class DeviceCredentialCreateResponse(BaseModel):
+    device: DeviceCredentialRead
+    credential: str

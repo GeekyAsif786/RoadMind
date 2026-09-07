@@ -4,6 +4,7 @@ from app.api import (
     auth,
     dashboard,
     detections,
+    device_credentials,
     emergencies,
     health,
     intersections,
@@ -15,6 +16,11 @@ from app.api import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(
+    device_credentials.router,
+    prefix="/device-credentials",
+    tags=["device-credentials"],
+)
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(intersections.router, prefix="/intersections", tags=["intersections"])
 api_router.include_router(traffic.router, prefix="/traffic", tags=["traffic"])

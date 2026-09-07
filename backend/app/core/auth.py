@@ -1,7 +1,7 @@
 import secrets
 from collections.abc import Callable
 from typing import Final
-
+from datetime import UTC, datetime
 
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -11,7 +11,13 @@ from app.core.config import get_settings
 from app.core.sessions import get_session_store
 from app.db.session import get_db
 from app.models.domain import User
+from datetime import UTC, datetime
 
+from app.core.device_credentials import (
+    parse_device_credential,
+    verify_device_credential,
+)
+from app.models.domain import DeviceCredential
 ROLE_ADMIN: Final[str] = "admin"
 ROLE_OPERATOR: Final[str] = "operator"
 ROLE_VIEWER: Final[str] = "viewer"
@@ -31,6 +37,60 @@ async def require_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
+def get_current_device(
+    x_device_credential: str = Header(default=""),
+    db: Session = Depends(get_db),
+) -> DeviceCredential:
+    if not x_device_credential:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing device credential",
+        )
+
+    try:
+        credential_id, secret = parse_device_credential(
+            x_device_credential
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device credential",
+        )
+
+    device = db.scalar(
+        select(DeviceCredential).where(
+            DeviceCredential.credential_id == credential_id,
+            DeviceCredential.is_active.is_(True),
+        )
+    )
+
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device credential",
+        )
+
+    now = datetime.now(UTC)
+
+    if device.expires_at is not None and device.expires_at <= now:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Device credential expired",
+        )
+
+    if not verify_device_credential(
+        secret,
+        device.credential_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device credential",
+        )
+
+    device.last_used_at = now
+    db.commit()
+
+    return device
 
 def get_current_user(
     roadmind_session: str | None = Cookie(default=None),
@@ -110,3 +170,17 @@ def require_admin(
             ROLE_ADMIN,
         },
     )
+
+def require_device_scope(required_scope: str):
+    def dependency(
+        device: DeviceCredential = Depends(get_current_device),
+    ) -> DeviceCredential:
+        if required_scope not in device.scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Device lacks required scope",
+            )
+
+        return device
+
+    return dependency

@@ -3,7 +3,7 @@ from app.core.auth import require_authenticated_user
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_api_key
+from app.core.auth import require_device_scope
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.schemas import DetectionQueueStatus, DetectionRead
@@ -13,7 +13,11 @@ from app.services.detection_service import DetectionService
 router = APIRouter()
 
 
-@router.post("/image", response_model=DetectionRead, dependencies=[Depends(require_api_key)])
+@router.post(
+    "/image",
+    response_model=DetectionRead,
+    dependencies=[Depends(require_device_scope("detection:write"))],
+)
 async def detect_from_image(
     file: UploadFile = File(...),
     intersection_id: UUID | None = None,
