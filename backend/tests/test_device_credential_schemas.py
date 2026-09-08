@@ -32,3 +32,19 @@ def test_device_credential_create_allows_no_intersection():
     )
 
     assert payload.intersection_id is None
+
+def test_device_credential_create_rejects_unknown_scope():
+    with pytest.raises(ValidationError):
+        DeviceCredentialCreate(
+            name="edge-camera-01",
+            scopes=["telemetry:write", "admin:everything"],
+        )
+
+
+def test_device_credential_create_removes_duplicate_scopes():
+    payload = DeviceCredentialCreate(
+        name="edge-camera-01",
+        scopes=["telemetry:write", "telemetry:write"],
+    )
+
+    assert payload.scopes == ["telemetry:write"]

@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.core.auth import get_current_device
 from app.core.device_credentials import hash_device_credential
 from app.models.domain import DeviceCredential
 from app.core.auth import get_current_device, require_device_scope
@@ -109,19 +108,6 @@ def test_require_device_scope_allows_device_with_scope():
     result = dependency(device)
 
     assert result is device
-
-
-def test_require_device_scope_rejects_missing_scope():
-    device = MagicMock(spec=DeviceCredential)
-    device.scopes = ["telemetry:write"]
-
-    dependency = require_device_scope("signal:control")
-
-    with pytest.raises(HTTPException) as exc:
-        dependency(device)
-
-    assert exc.value.status_code == 403
-    assert exc.value.detail == "Device lacks required scope"
 
 def test_require_device_scope_rejects_missing_scope():
     device = MagicMock(spec=DeviceCredential)
