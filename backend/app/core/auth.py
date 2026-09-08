@@ -11,7 +11,6 @@ from app.core.config import get_settings
 from app.core.sessions import get_session_store
 from app.db.session import get_db
 from app.models.domain import User
-from datetime import UTC, datetime
 
 from app.core.device_credentials import (
     parse_device_credential,

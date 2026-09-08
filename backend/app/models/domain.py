@@ -237,6 +237,31 @@ class IntersectionSignalState(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
+class SignalControllerState(Base):
+    __tablename__ = "signal_controller_states"
+
+    intersection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("intersections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    current_phase: Mapped[int] = mapped_column(Integer, nullable=False)
+    phase_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    controller_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reported_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_plans.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    phase_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
 class ModelEvaluation(Base, TimestampMixin):
     __tablename__ = "model_evaluations"

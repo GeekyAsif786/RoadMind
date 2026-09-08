@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from uuid import UUID
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-
-from app.core.auth import require_admin,require_operator_or_admin
+from app.core.auth import require_admin, require_authenticated_user, require_operator_or_admin
 from app.core.jobs import get_job_queue
 from app.db.session import get_db
 from app.schemas import PredictionRead, PredictionRequest, PredictionTrainResponse
@@ -37,7 +37,20 @@ def train_model_sync(db: Session = Depends(get_db)):
         rmse=metrics.get("rmse"),
         r2=metrics.get("r2"),
     )
-
+@router.get(
+    "/latest",
+    response_model=list[PredictionRead],
+    dependencies=[Depends(require_authenticated_user)],
+)
+def get_latest_predictions(
+    intersection_id: UUID | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return PredictionService(db).latest(
+        intersection_id=intersection_id,
+        limit=limit,
+    )
 
 @router.post(
     "",

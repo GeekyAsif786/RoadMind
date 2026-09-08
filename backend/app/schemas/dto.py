@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class IntersectionBase(BaseModel):
@@ -103,6 +103,27 @@ class SignalPlanRead(BaseModel):
     created_at: datetime
     phases: list[SignalPhaseRead] = Field(default_factory=list)
 
+class SignalStateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    intersection_id: UUID
+    last_density: float
+    last_vehicle_count: int
+    last_signal_plan_id: UUID | None
+    last_detection_timestamp: datetime | None
+    decision_source: str
+    updated_at: datetime
+
+class SignalControllerStateCreate(BaseModel):
+    current_phase: int = Field(ge=1, le=16)
+    phase_state: str = Field(
+        pattern=r"^(green|yellow|red|pedestrian)$"
+    )
+    controller_status: str = Field(
+        pattern=r"^(online|degraded|fault)$"
+    )
+    reported_plan_id: UUID | None = None
+    phase_started_at: datetime | None = None
 
 class EmergencyCreate(BaseModel):
     intersection_id: UUID
@@ -200,10 +221,31 @@ class DetectionQueueStatus(BaseModel):
     batch_size: int
     fallback_mode: str
 
+DEVICE_SCOPES = {
+    "telemetry:write",
+    "detection:write",
+    "prediction:read",
+    "signal:state:read",
+    "signal:state:write",
+    "signal:control",
+    "jobs:read",
+}
 class DeviceCredentialCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     scopes: list[str] = Field(min_length=1)
     intersection_id: UUID | None = None
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, scopes: list[str]) -> list[str]:
+        invalid = set(scopes) - DEVICE_SCOPES
+
+        if invalid:
+            raise ValueError(
+                f"Unsupported device scopes: {sorted(invalid)}"
+            )
+
+        return list(dict.fromkeys(scopes))
 
 
 class DeviceCredentialRead(BaseModel):

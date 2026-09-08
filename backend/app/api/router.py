@@ -9,6 +9,7 @@ from app.api import (
     health,
     intersections,
     jobs,
+    device,
     predictions,
     signals,
     traffic,
@@ -21,6 +22,7 @@ api_router.include_router(
     prefix="/device-credentials",
     tags=["device-credentials"],
 )
+api_router.include_router(device.router, prefix="/device", tags=["device"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(intersections.router, prefix="/intersections", tags=["intersections"])
 api_router.include_router(traffic.router, prefix="/traffic", tags=["traffic"])

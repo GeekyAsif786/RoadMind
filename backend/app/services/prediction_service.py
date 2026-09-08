@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-
+from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -87,3 +87,13 @@ class PredictionService:
         cache.delete_prefix("prediction:latest:")
         get_metrics().observe_prediction(timer.elapsed())
         return prediction
+
+    def latest(
+        self,
+        intersection_id: UUID | None = None,
+        limit: int = 10,
+    ) -> list[Prediction]:
+        return self.predictions.latest(
+            intersection_id=intersection_id,
+            limit=limit,
+        )

@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.models.domain import DeviceCredential
 from app.core.auth import require_authenticated_user
 from sqlalchemy.orm import Session
 
@@ -37,7 +38,22 @@ def latest_observations(
     "/observations",
     response_model=TrafficObservationRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_device_scope("telemetry:write"))],
 )
-def create_observation(payload: TrafficObservationCreate, db: Session = Depends(get_db)):
+def create_observation(
+    payload: TrafficObservationCreate,
+    device=Depends(require_device_scope("telemetry:write")),
+    db: Session = Depends(get_db),
+):
+    if device.intersection_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device is not bound to an intersection",
+        )
+
+    if payload.intersection_id != device.intersection_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device is not authorized for this intersection",
+        )
+
     return TrafficService(db).create_observation(payload)
