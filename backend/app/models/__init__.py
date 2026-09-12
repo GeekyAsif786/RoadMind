@@ -8,7 +8,9 @@ from app.models.domain import (
     ModelEvaluation,
     Prediction,
     SignalPhase,
+    SignalControllerState,
     SignalPlan,
+    SignalControlCommand,
     TrafficObservation,
 )
 
@@ -19,9 +21,11 @@ __all__ = [
     "EmergencyEvent",
     "Intersection",
     "IntersectionSignalState",
+    "SignalControllerState",
     "ModelEvaluation",
     "Prediction",
     "SignalPhase",
     "SignalPlan",
     "TrafficObservation",
+    "SignalControlCommand",
 ]

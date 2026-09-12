@@ -125,6 +125,32 @@ class SignalControllerStateCreate(BaseModel):
     reported_plan_id: UUID | None = None
     phase_started_at: datetime | None = None
 
+class SignalControllerStateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    intersection_id: UUID
+    current_phase: int
+    phase_state: str
+    controller_status: str
+    reported_plan_id: UUID | None
+    phase_started_at: datetime | None
+    updated_at: datetime
+
+class SignalControlCommand(BaseModel):
+    plan_id: UUID
+    phase_number: int = Field(ge=1, le=16)
+
+class SignalControlCommandRead(BaseModel):
+    command_id: UUID
+    intersection_id: UUID
+    plan_id: UUID
+    phase_number: int
+    direction: str
+    green_seconds: int
+    yellow_seconds: int
+    expires_at: datetime | None
+    status: str
+
 class EmergencyCreate(BaseModel):
     intersection_id: UUID
     vehicle_type: str = Field(min_length=3, max_length=60)

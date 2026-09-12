@@ -9,3 +9,4 @@ backend/models/
 node_modules/
 dist/
 postgres-data/
+graphify-out/

@@ -263,6 +263,55 @@ class SignalControllerState(Base):
         nullable=False,
     )
 
+class SignalControlCommand(Base, TimestampMixin):
+    __tablename__ = "signal_control_commands"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    intersection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("intersections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("device_credentials.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    phase_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="accepted",
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
 class ModelEvaluation(Base, TimestampMixin):
     __tablename__ = "model_evaluations"
     __table_args__ = (UniqueConstraint("model_version", name="uq_model_evaluations_model_version"),)
