@@ -9,7 +9,14 @@ from app.models import SignalPhase, SignalPlan
 class SignalRepository:
     def __init__(self, db: Session):
         self.db = db
-
+    def get(self, plan_id: UUID) -> SignalPlan | None:
+        return self.db.get(SignalPlan, plan_id)
+    def get_phase(self, plan_id: UUID, phase_number: int) -> SignalPhase | None:
+        statement = select(SignalPhase).where(
+            SignalPhase.plan_id == plan_id,
+            SignalPhase.phase_number == phase_number,
+        )
+        return self.db.scalar(statement)
     def create(self, plan: SignalPlan) -> SignalPlan:
         self.db.add(plan)
         self.db.commit()
