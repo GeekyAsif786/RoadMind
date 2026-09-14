@@ -189,6 +189,7 @@ def make_command(
     command.phase_number = phase_number
     command.status = status
     command.expires_at = expires_at
+    command.execution_reported_at = None
     return command
 
 
