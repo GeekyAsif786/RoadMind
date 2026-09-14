@@ -311,6 +311,10 @@ class SignalControlCommand(Base, TimestampMixin):
         DateTime(timezone=True),
         nullable=True,
     )
+    execution_reported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 class ModelEvaluation(Base, TimestampMixin):
     __tablename__ = "model_evaluations"
