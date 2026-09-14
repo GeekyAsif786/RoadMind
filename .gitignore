@@ -10,7 +10,3 @@ node_modules/
 dist/
 postgres-data/
 graphify-out/
-Hardware_Integration/test/3_LED_TEST
-Hardware_Integration/test/RoadMind_edge_v1_modified
-Hardware_Integration/test/SAFE_RED_ON_BOOT
-Hardware_Integration/test/secrets.h
