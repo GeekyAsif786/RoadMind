@@ -1,4 +1,19 @@
-test/3_LED_TEST
-test/RoadMind_edge_v1_modified
-test/SAFE_RED_ON_BOOT
-test/secrets.h
+# Secrets / credentials (WiFi, device tokens, base URLs)
+secrets.h
+**/secrets.h
+*.secrets.h
+
+# Arduino / PlatformIO build artifacts
+build/
+.build/
+*.bin
+*.elf
+*.hex
+*.map
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
