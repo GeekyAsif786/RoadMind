@@ -108,7 +108,17 @@ class SignalControllerStateService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Reported phase does not match the control command",
             )
+        if command.execution_reported_at is not None:
+            existing_state = self.controller_states.get(intersection_id)
 
+            if existing_state is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Execution was already reported but controller state is unavailable",
+                )
+
+            return existing_state
+        command.execution_reported_at = now
         return self.update(
             intersection_id=intersection_id,
             payload=payload,
