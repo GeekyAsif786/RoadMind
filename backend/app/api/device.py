@@ -61,7 +61,28 @@ def get_device_signal_state(
         )
 
     return SignalStateService(db).get(device.intersection_id)
+@router.post(
+    "/heartbeat",
+    response_model=SignalControllerStateRead,
+    status_code=status.HTTP_200_OK,
+)
+def device_heartbeat(
+    payload: SignalControllerStateCreate,
+    device: DeviceCredential = Depends(
+        require_device_scope("signal:state:write")
+    ),
+    db: Session = Depends(get_db),
+):
+    if device.intersection_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device is not bound to an intersection",
+        )
 
+    return SignalControllerStateService(db).update(
+        intersection_id=device.intersection_id,
+        payload=payload,
+    )
 @router.post(
     "/signals/state",
     response_model=SignalControllerStateRead,
