@@ -50,11 +50,12 @@ enum SignalState {
 SignalState state = SAFE_RED;
 
 unsigned long stateStartedAt = 0;
-
+bool controllerFault = false;
 // Prototype safety values.
 // Later these can come from configuration.
 const unsigned long MIN_GREEN_TIME = 5000;
 const unsigned long RED_CLEARANCE_TIME = 3000;
+const unsigned long HEARTBEAT_INTERVAL = 10000; // Heartbeat interval
 //-------------------------
 // Temporary persistence/recovery test mode.
 const bool PERSISTENCE_TEST_MODE = false;
@@ -65,7 +66,7 @@ const unsigned long EXECUTION_REPORT_RETRY_INTERVAL = 5000;
 unsigned long activeGreenTime = MIN_GREEN_TIME;
 unsigned long activeYellowTime = 2000;
 unsigned long lastExecutionReportAttempt = 0;
-
+unsigned long lastHeartbeat = 0;
 // ============================================================
 // RoadMind command
 // ============================================================
@@ -102,7 +103,7 @@ Preferences commandPrefs;
 const char* COMMAND_NAMESPACE = "roadmind";
 
 String lastCompletedCommandId = "";
-
+int lastPhysicalPhase = 1;
 // After reboot, a recovered command must wait until UTC is
 // synchronized before we decide whether it is expired.
 bool recoveryValidationPending = false;
@@ -396,7 +397,10 @@ void saveActiveCommand() {
     "phase",
     activeCommand.phaseNumber
   );
-
+  commandPrefs.putInt(
+    "lastPhase",
+    lastPhysicalPhase
+  );
   commandPrefs.putULong(
     "greenMs",
     activeCommand.greenTime
@@ -463,7 +467,7 @@ bool loadActiveCommand() {
 
   activeCommand.phaseNumber =
     commandPrefs.getInt("phase", 0);
-
+  lastPhysicalPhase = commandPrefs.getInt("lastPhase", 1);
   activeCommand.greenTime =
     commandPrefs.getULong("greenMs", 0);
 
@@ -604,8 +608,20 @@ String currentUtcIso8601() {
 
   return String(buffer);
 }
+void setControllerFault(const String& reason) {
+  controllerFault = true;
 
+  Serial.print("CONTROLLER FAULT: ");
+  Serial.println(reason);
+
+  // Immediate fail-safe output.
+  applyState(SAFE_RED);
+}
 String currentControllerStatus() {
+  if (controllerFault) {
+    return "fault";
+  }
+
   if (WiFi.status() != WL_CONNECTED) {
     return "degraded";
   }
@@ -630,7 +646,90 @@ String currentPhaseState() {
 
   return "red";
 }
+int currentReportedPhase() {
+  if (activeCommand.valid) {
+    return activeCommand.phaseNumber;
+  }
 
+  return lastPhysicalPhase;
+}
+bool sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  if (!timeSynchronized) {
+    return false;
+  }
+
+  HTTPClient http;
+
+  String url =
+    String(ROADMIND_BASE_URL) +
+    "/api/v1/device/heartbeat";
+
+  http.begin(url);
+
+  http.addHeader(
+    "Content-Type",
+    "application/json"
+  );
+
+  http.addHeader(
+    "X-Device-Credential",
+    ROADMIND_DEVICE_CREDENTIAL
+  );
+
+  String phaseStartedAt =
+    activeCommand.executionStartedAtUtc;
+
+  if (phaseStartedAt.length() == 0) {
+    phaseStartedAt = currentUtcIso8601();
+  }
+
+  String body =
+    String("{") +
+    "\"current_phase\":" +
+    String(currentReportedPhase()) +
+    "," +
+    "\"phase_state\":\"" +
+    currentPhaseState() +
+    "\"," +
+    "\"controller_status\":\"" +
+    currentControllerStatus() +
+    "\"," +
+    "\"reported_plan_id\":" +
+    (
+      activeCommand.valid
+        ? "\"" + activeCommand.planId + "\""
+        : "null"
+    ) +
+    "," +
+    "\"phase_started_at\":" +
+    (
+      phaseStartedAt.length() > 0
+        ? "\"" + phaseStartedAt + "\""
+        : "null"
+    ) +
+    "}";
+
+  int httpCode = http.POST(body);
+
+  Serial.print("Heartbeat HTTP status: ");
+  Serial.println(httpCode);
+
+  if (httpCode == HTTP_CODE_OK) {
+    http.end();
+    return true;
+  }
+
+  if (httpCode > 0) {
+    Serial.println(http.getString());
+  }
+
+  http.end();
+  return false;
+}
 // ============================================================
 // RoadMind execution report
 // ============================================================
@@ -1158,18 +1257,18 @@ void processActiveCommand() {
       activeCommand.yellowTime;
 
     applyState(GREEN);
-
+    lastPhysicalPhase =
+    activeCommand.phaseNumber;
     activeCommand.executionStarted = true;
     activeCommand.executionStartedAt = millis();
     activeCommand.executionStartedAtUtc =
       currentUtcIso8601();
 
     if (activeCommand.executionStartedAtUtc.length() == 0) {
-      Serial.println(
-        "ERROR: UTC timestamp unavailable at execution start"
+      setControllerFault(
+        "UTC timestamp unavailable at execution start"
       );
 
-      applyState(SAFE_RED);
       activeCommand.executionStarted = false;
       activeCommand.executionStartedAt = 0;
       activeCommand.executionStartedAtUtc = "";
@@ -1253,18 +1352,18 @@ void processActiveCommand() {
       activeCommand.greenTime;
 
     applyState(GREEN);
-
+    lastPhysicalPhase =
+    activeCommand.phaseNumber;
     activeCommand.executionStarted = true;
     activeCommand.executionStartedAt = millis();
     activeCommand.executionStartedAtUtc =
       currentUtcIso8601();
 
     if (activeCommand.executionStartedAtUtc.length() == 0) {
-      Serial.println(
-        "ERROR: UTC timestamp unavailable at execution start"
+      setControllerFault(
+        "UTC timestamp unavailable at execution start"
       );
 
-      applyState(SAFE_RED);
       activeCommand.executionStarted = false;
       activeCommand.executionStartedAt = 0;
       activeCommand.executionStartedAtUtc = "";
@@ -1347,7 +1446,7 @@ void setup() {
   pinMode(GREEN_LED, OUTPUT);
 
   Serial.begin(115200);
-
+  controllerFault = false;
   delay(1000);
 
   // Explicitly make mktime()/time handling UTC.
@@ -1459,5 +1558,16 @@ void loop() {
     lastPoll = millis();
 
     fetchPendingCommands();
+  }
+  if (
+    millis() - lastHeartbeat >= HEARTBEAT_INTERVAL
+  ) {
+    lastHeartbeat = millis();
+
+    Serial.println(
+      "Sending RoadMind heartbeat..."
+    );
+
+    sendHeartbeat();
   }
 }
