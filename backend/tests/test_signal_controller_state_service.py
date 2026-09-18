@@ -27,6 +27,7 @@ def test_update_without_reported_plan_delegates_to_repository():
     expected = Mock(spec=SignalControllerState)
     service.controller_states.upsert = Mock(return_value=expected)
     service.signals.get = Mock()
+
     result = service.update(
         intersection_id=intersection_id,
         payload=payload,
@@ -41,6 +42,7 @@ def test_update_without_reported_plan_delegates_to_repository():
         controller_status="online",
         reported_plan_id=None,
         phase_started_at=None,
+        commit=True,
     )
 
 
@@ -60,6 +62,7 @@ def test_update_rejects_missing_reported_plan():
 
     service.signals.get = Mock(return_value=None)
     service.controller_states.upsert = Mock()
+
     with pytest.raises(HTTPException) as exc:
         service.update(
             intersection_id=intersection_id,
@@ -91,6 +94,7 @@ def test_update_rejects_plan_from_other_intersection():
 
     service.signals.get = Mock(return_value=plan)
     service.controller_states.upsert = Mock()
+
     with pytest.raises(HTTPException) as exc:
         service.update(
             intersection_id=intersection_id,
@@ -98,7 +102,10 @@ def test_update_rejects_plan_from_other_intersection():
         )
 
     assert exc.value.status_code == 403
-    assert exc.value.detail == "Signal plan does not belong to this intersection"
+    assert (
+        exc.value.detail
+        == "Signal plan does not belong to this intersection"
+    )
     service.controller_states.upsert.assert_not_called()
 
 
@@ -122,6 +129,7 @@ def test_update_rejects_expired_plan():
 
     service.signals.get = Mock(return_value=plan)
     service.controller_states.upsert = Mock()
+
     with pytest.raises(HTTPException) as exc:
         service.update(
             intersection_id=intersection_id,
@@ -170,7 +178,9 @@ def test_update_accepts_valid_reported_plan():
         controller_status="online",
         reported_plan_id=plan.id,
         phase_started_at=None,
+        commit=True,
     )
+
 
 def make_command(
     *,
@@ -218,7 +228,7 @@ def test_report_command_execution_accepts_matching_acknowledged_command():
 
     expected = Mock(spec=SignalControllerState)
 
-    service.commands.get = Mock(return_value=command)
+    service.commands.get_for_update = Mock(return_value=command)
     service.update = Mock(return_value=expected)
 
     result = service.report_command_execution(
@@ -229,11 +239,19 @@ def test_report_command_execution_accepts_matching_acknowledged_command():
     )
 
     assert result is expected
-    service.commands.get.assert_called_once_with(command.id)
+
+    service.commands.get_for_update.assert_called_once_with(
+        command.id
+    )
+
     service.update.assert_called_once_with(
         intersection_id=intersection_id,
         payload=payload,
+        commit=False,
     )
+
+    service.db.commit.assert_called_once()
+    service.db.refresh.assert_called_once_with(expected)
 
 
 def test_report_command_execution_rejects_wrong_device():
@@ -258,7 +276,7 @@ def test_report_command_execution_rejects_wrong_device():
         reported_plan_id=plan_id,
     )
 
-    service.commands.get = Mock(return_value=command)
+    service.commands.get_for_update = Mock(return_value=command)
     service.controller_states.upsert = Mock()
 
     with pytest.raises(HTTPException) as exc:
@@ -270,8 +288,16 @@ def test_report_command_execution_rejects_wrong_device():
         )
 
     assert exc.value.status_code == 403
-    assert exc.value.detail == "Device is not authorized to report this command"
+    assert (
+        exc.value.detail
+        == "Device is not authorized to report this command"
+    )
+
+    service.commands.get_for_update.assert_called_once_with(
+        command.id
+    )
     service.controller_states.upsert.assert_not_called()
+    service.db.commit.assert_not_called()
 
 
 def test_report_command_execution_rejects_unacknowledged_command():
@@ -296,7 +322,7 @@ def test_report_command_execution_rejects_unacknowledged_command():
         reported_plan_id=plan_id,
     )
 
-    service.commands.get = Mock(return_value=command)
+    service.commands.get_for_update = Mock(return_value=command)
     service.controller_states.upsert = Mock()
 
     with pytest.raises(HTTPException) as exc:
@@ -311,7 +337,12 @@ def test_report_command_execution_rejects_unacknowledged_command():
     assert exc.value.detail == (
         "Signal control command must be acknowledged before execution is reported"
     )
+
+    service.commands.get_for_update.assert_called_once_with(
+        command.id
+    )
     service.controller_states.upsert.assert_not_called()
+    service.db.commit.assert_not_called()
 
 
 def test_report_command_execution_rejects_mismatched_phase():
@@ -336,7 +367,7 @@ def test_report_command_execution_rejects_mismatched_phase():
         reported_plan_id=plan_id,
     )
 
-    service.commands.get = Mock(return_value=command)
+    service.commands.get_for_update = Mock(return_value=command)
     service.controller_states.upsert = Mock()
 
     with pytest.raises(HTTPException) as exc:
@@ -348,5 +379,13 @@ def test_report_command_execution_rejects_mismatched_phase():
         )
 
     assert exc.value.status_code == 409
-    assert exc.value.detail == "Reported phase does not match the control command"
+    assert (
+        exc.value.detail
+        == "Reported phase does not match the control command"
+    )
+
+    service.commands.get_for_update.assert_called_once_with(
+        command.id
+    )
     service.controller_states.upsert.assert_not_called()
+    service.db.commit.assert_not_called()

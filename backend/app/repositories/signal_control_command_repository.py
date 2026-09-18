@@ -22,6 +22,17 @@ class SignalControlCommandRepository:
 
     def get(self, command_id: UUID) -> SignalControlCommand | None:
         return self.db.get(SignalControlCommand, command_id)
+    def get_for_update(
+        self,
+        command_id: UUID,
+    ) -> SignalControlCommand | None:
+        statement = (
+            select(SignalControlCommand)
+            .where(SignalControlCommand.id == command_id)
+            .with_for_update()
+        )
+
+        return self.db.scalar(statement)
     def pending_for_device(
         self,
         device_id: UUID,

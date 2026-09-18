@@ -21,6 +21,8 @@ class SignalControllerStateRepository:
         controller_status: str,
         reported_plan_id: UUID | None = None,
         phase_started_at: datetime | None = None,
+        *,
+        commit: bool = True,
     ) -> SignalControllerState:
         state = self.get(intersection_id)
 
@@ -37,6 +39,9 @@ class SignalControllerStateRepository:
         state.phase_started_at = phase_started_at
         state.updated_at = datetime.now(UTC)
 
-        self.db.commit()
-        self.db.refresh(state)
+        if commit:
+            self.db.commit()
+            self.db.refresh(state)
+        else:
+            self.db.flush()
         return state

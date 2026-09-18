@@ -76,7 +76,7 @@ def test_first_execution_report_marks_command_as_reported():
 
     state = Mock()
 
-    service.commands.get.return_value = command
+    service.commands.get_for_update.return_value = command
     service.update = Mock(return_value=state)
 
     payload = make_payload(
@@ -94,10 +94,16 @@ def test_first_execution_report_marks_command_as_reported():
     assert result is state
     assert command.execution_reported_at is not None
 
+    service.commands.get_for_update.assert_called_once_with(command_id)
+
     service.update.assert_called_once_with(
         intersection_id=intersection_id,
         payload=payload,
+        commit=False,
     )
+
+    service.db.commit.assert_called_once()
+    service.db.refresh.assert_called_once_with(state)
 
 
 def test_duplicate_execution_report_returns_existing_state_without_update():
@@ -118,7 +124,7 @@ def test_duplicate_execution_report_returns_existing_state_without_update():
 
     existing_state = Mock()
 
-    service.commands.get.return_value = command
+    service.commands.get_for_update.return_value = command
     service.controller_states.get.return_value = existing_state
     service.update = Mock()
 
@@ -135,8 +141,15 @@ def test_duplicate_execution_report_returns_existing_state_without_update():
     )
 
     assert result is existing_state
-    service.controller_states.get.assert_called_once_with(intersection_id)
+
+    service.commands.get_for_update.assert_called_once_with(command_id)
+
+    service.controller_states.get.assert_called_once_with(
+        intersection_id
+    )
+
     service.update.assert_not_called()
+    service.db.commit.assert_not_called()
 
 
 def test_duplicate_execution_report_with_wrong_phase_is_rejected():
@@ -156,7 +169,7 @@ def test_duplicate_execution_report_with_wrong_phase_is_rejected():
         execution_reported_at=datetime.now(UTC),
     )
 
-    service.commands.get.return_value = command
+    service.commands.get_for_update.return_value = command
 
     payload = make_payload(
         plan_id=plan_id,
@@ -172,7 +185,13 @@ def test_duplicate_execution_report_with_wrong_phase_is_rejected():
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == "Reported phase does not match the control command"
+    assert (
+        exc_info.value.detail
+        == "Reported phase does not match the control command"
+    )
+
+    service.commands.get_for_update.assert_called_once_with(command_id)
+    service.db.commit.assert_not_called()
 
 
 def test_reported_command_without_controller_state_returns_conflict():
@@ -191,7 +210,7 @@ def test_reported_command_without_controller_state_returns_conflict():
         execution_reported_at=datetime.now(UTC),
     )
 
-    service.commands.get.return_value = command
+    service.commands.get_for_update.return_value = command
     service.controller_states.get.return_value = None
 
     payload = make_payload(
@@ -212,3 +231,52 @@ def test_reported_command_without_controller_state_returns_conflict():
         exc_info.value.detail
         == "Execution was already reported but controller state is unavailable"
     )
+
+    service.commands.get_for_update.assert_called_once_with(command_id)
+    service.db.commit.assert_not_called()
+
+
+def test_execution_report_rolls_back_when_controller_state_update_fails():
+    service = make_service()
+
+    command_id = uuid4()
+    device_id = uuid4()
+    intersection_id = uuid4()
+    plan_id = uuid4()
+
+    command = make_command(
+        command_id=command_id,
+        device_id=device_id,
+        intersection_id=intersection_id,
+        plan_id=plan_id,
+    )
+
+    service.commands.get_for_update.return_value = command
+
+    expected_error = RuntimeError("controller state update failed")
+
+    service.update = Mock(side_effect=expected_error)
+
+    payload = make_payload(
+        plan_id=plan_id,
+        phase_number=1,
+    )
+
+    with pytest.raises(RuntimeError, match="controller state update failed"):
+        service.report_command_execution(
+            command_id=command_id,
+            device_id=device_id,
+            intersection_id=intersection_id,
+            payload=payload,
+        )
+
+    assert command.execution_reported_at is not None
+
+    service.update.assert_called_once_with(
+        intersection_id=intersection_id,
+        payload=payload,
+        commit=False,
+    )
+
+    service.db.rollback.assert_called_once()
+    service.db.commit.assert_not_called()

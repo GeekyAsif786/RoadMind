@@ -17,6 +17,8 @@ from app.schemas import SignalControllerStateCreate
 
 class SignalControllerStateService:
     def __init__(self, db: Session):
+        self.db = db
+        self.controller_states = SignalControllerStateRepository(db)
         self.controller_states = SignalControllerStateRepository(db)
         self.signals = SignalRepository(db)
         self.commands = SignalControlCommandRepository(db)
@@ -25,6 +27,8 @@ class SignalControllerStateService:
         self,
         intersection_id: UUID,
         payload: SignalControllerStateCreate,
+        *,
+        commit: bool = True
     ) -> SignalControllerState:
         if payload.reported_plan_id is not None:
             plan = self.signals.get(payload.reported_plan_id)
@@ -54,6 +58,7 @@ class SignalControllerStateService:
             controller_status=payload.controller_status,
             reported_plan_id=payload.reported_plan_id,
             phase_started_at=payload.phase_started_at,
+            commit=commit,
         )
 
     def report_command_execution(
@@ -63,7 +68,7 @@ class SignalControllerStateService:
         intersection_id: UUID,
         payload: SignalControllerStateCreate,
     ) -> SignalControllerState:
-        command = self.commands.get(command_id)
+        command = self.commands.get_for_update(command_id)
 
         if command is None:
             raise HTTPException(
@@ -119,7 +124,22 @@ class SignalControllerStateService:
 
             return existing_state
         command.execution_reported_at = now
-        return self.update(
-            intersection_id=intersection_id,
-            payload=payload,
-        )
+        try:
+            state = self.update(
+                intersection_id=intersection_id,
+                payload=payload,
+                commit=False,
+            )
+
+            self.db.commit()
+            self.db.refresh(state)
+
+            return state
+
+        except Exception:
+            self.db.rollback()
+            raise
+        # return self.update(
+        #     intersection_id=intersection_id,
+        #     payload=payload,
+        # )
