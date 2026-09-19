@@ -87,7 +87,8 @@ services:
     volumes:
       - backend-models:/app/runtime_models
     command: rq worker roadmind --url redis://redis:6379/0
-
+    healthcheck:
+      disable: true
   frontend:
     build:
       context: ./frontend
