@@ -17,7 +17,9 @@ class Settings(BaseSettings):
         "postgresql+psycopg://traffic:traffic@localhost:5432/traffic_manager"
     )
 
-    auto_create_tables: bool = True
+    # Alembic is the schema-management mechanism. create_all is an explicit
+    # development-only opt-in and is refused in production.
+    auto_create_tables: bool = False
 
     api_key: str = Field(default=DEFAULT_INSECURE_API_KEY)
     enable_auth: bool = Field(default=False)

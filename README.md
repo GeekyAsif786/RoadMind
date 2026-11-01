@@ -28,7 +28,7 @@ backend/app
   ml/               RandomForestRegressor training and inference
   core/             Settings, auth, logging, and India-specific calendar helpers
 frontend/src        React operations dashboard
-db/init             PostgreSQL bootstrap schema
+db/init             Legacy PostgreSQL bootstrap schema (not used by Compose)
 db/seeds            Demo data for local development
 ```
 
@@ -214,11 +214,17 @@ curl -X POST http://localhost:8000/api/v1/predictions \
 
 ## Data And Migrations
 
-- `db/init/001_schema.sql` bootstraps PostgreSQL for Docker/local database setup.
-- `db/seeds/demo_data.sql` contains demo records for local development.
-- `backend/alembic/versions` contains migrations for schema evolution.
+- `backend/alembic/versions` is the only schema-management path. Docker Compose runs `alembic upgrade head` on backend start with `AUTO_CREATE_TABLES=false`.
+- `backend/app/db/seed.py` inserts idempotent development sample data (currently `Central Avenue Junction`). It refuses to run unless `ENVIRONMENT` is `development` or `local`, and only when migrations are current:
 
-When changing ORM models, keep the SQL bootstrap and Alembic migrations in sync.
+  ```bash
+  docker compose exec backend python -m app.db.seed
+  ```
+
+- `db/seeds/demo_data.sql` contains additional demo records for local development.
+- `db/init/001_schema.sql` is a legacy bootstrap script kept for reference. Docker Compose no longer mounts it.
+
+When changing ORM models, add an Alembic migration.
 
 ## Verification Commands
 

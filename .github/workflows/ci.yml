@@ -42,15 +42,40 @@ jobs:
   backend-tests:
     name: Backend tests (pytest)
     runs-on: ubuntu-latest
+    # Database-backed tests need a real PostgreSQL with the Alembic schema.
+    # Redis is not provisioned: Redis-path tests use in-process fakes.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: traffic_manager
+          POSTGRES_USER: traffic
+          POSTGRES_PASSWORD: traffic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U traffic -d traffic_manager"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: development
+      AUTO_CREATE_TABLES: "false"
+      DATABASE_URL: postgresql+psycopg://traffic:traffic@localhost:5432/traffic_manager
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Command 3 from README.md "Verification Commands".
-      - name: pip install -r requirements.txt && pytest
+      - name: Install backend dependencies
         working-directory: backend
         run: |
           pip install -r requirements.txt
           pip install pytest
-          pytest
+      - name: alembic upgrade head
+        working-directory: backend
+        run: alembic upgrade head
+      # Command 3 from README.md "Verification Commands".
+      - name: pytest
+        working-directory: backend
+        run: pytest
