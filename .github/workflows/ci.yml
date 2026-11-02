@@ -35,6 +35,8 @@ jobs:
           node-version: "20"
       - name: Install frontend dependencies
         run: npm --prefix frontend install
+      - name: Frontend tests
+        run: npm --prefix frontend test
       # Command 2 from README.md "Verification Commands".
       - name: npm --prefix frontend run build
         run: npm --prefix frontend run build
@@ -71,7 +73,7 @@ jobs:
         working-directory: backend
         run: |
           pip install -r requirements.txt
-          pip install pytest
+          pip install -r requirements-dev.txt
       - name: alembic upgrade head
         working-directory: backend
         run: alembic upgrade head

@@ -82,25 +82,91 @@ select {
 .topbar-actions {
   width: min(640px, 100%);
   display: grid;
-  grid-template-columns: minmax(140px, 190px) 1fr 48px;
+  grid-template-columns: minmax(140px, 220px) 1fr 48px 48px;
   gap: 10px;
 }
 
-.api-key-field {
-  position: relative;
+.user-chip {
+  min-height: 42px;
+  min-width: 0;
   display: flex;
   align-items: center;
+  gap: 8px;
+  border: 1px solid #bac5bf;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0 12px;
 }
 
-.api-key-field svg {
-  position: absolute;
-  left: 10px;
+.user-chip svg {
+  flex: none;
   color: #718078;
-  pointer-events: none;
 }
 
-.api-key-field input {
-  padding-left: 34px;
+.topbar .user-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #19211f;
+}
+
+.topbar .user-chip-role {
+  flex: none;
+  margin-left: auto;
+  border-radius: 6px;
+  background: #dff0e9;
+  color: #1f6f58;
+  font-size: 12px;
+  padding: 2px 8px;
+  text-transform: capitalize;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  min-height: 0;
+}
+
+.login-panel .panel-heading {
+  margin-bottom: 4px;
+}
+
+.login-subtitle {
+  margin: 0 0 18px;
+  color: #5f6c66;
+}
+
+.login-panel .compact-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.login-panel .primary-button {
+  margin-top: 6px;
+}
+
+.login-retry {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.notice.inline {
+  position: static;
+  width: auto;
+  margin-bottom: 14px;
+  box-shadow: none;
+}
+
+.auth-checking {
+  color: #51605a;
+  font-weight: 700;
 }
 
 .live-dot {

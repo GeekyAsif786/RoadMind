@@ -1,34 +1,75 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const API_KEY_STORAGE_KEY = "traffic-manager:api-key";
 
-function authHeaders() {
-  const apiKey = window.localStorage.getItem(API_KEY_STORAGE_KEY) || import.meta.env.VITE_API_KEY || "";
-  return apiKey ? { "X-Api-Key": apiKey } : {};
+// Browser requests authenticate with the backend's HttpOnly session cookie.
+// The cookie is never readable from JavaScript, and nothing credential-like is
+// kept in localStorage, sessionStorage or the bundle.
+export class ApiError extends Error {
+  constructor(message, status, { path = "" } = {}) {
+    super(message);
+    this.name = "ApiError";
+    // 0 means the request never got an HTTP response (network/CORS failure).
+    this.status = status;
+    this.path = path;
+  }
+
+  get isNetworkError() {
+    return this.status === 0;
+  }
+
+  get isUnauthorized() {
+    return this.status === 401;
+  }
+
+  get isForbidden() {
+    return this.status === 403;
+  }
+}
+
+async function errorMessage(response) {
+  const fallback = `Request failed with ${response.status}`;
+  try {
+    const payload = await response.json();
+    if (typeof payload.detail === "string") return payload.detail;
+    if (Array.isArray(payload.detail)) {
+      return payload.detail.map((item) => item.msg).filter(Boolean).join("; ") || fallback;
+    }
+    return fallback;
+  } catch {
+    // Keep the HTTP status message when the body is not JSON.
+    return fallback;
+  }
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.headers ?? {})
-    }
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      credentials: "include"
+    });
+  } catch {
+    throw new ApiError(`Cannot reach the RoadMind backend at ${API_BASE_URL}`, 0, { path });
+  }
+
   if (!response.ok) {
-    let message = `Request failed with ${response.status}`;
-    try {
-      const payload = await response.json();
-      message = payload.detail ?? message;
-    } catch {
-      // Keep the HTTP status message when the body is not JSON.
-    }
-    throw new Error(message);
+    throw new ApiError(await errorMessage(response), response.status, { path });
+  }
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return null;
   }
   return response.json();
 }
 
 export const api = {
-  apiKeyStorageKey: API_KEY_STORAGE_KEY,
+  baseUrl: API_BASE_URL,
+  login: (usernameOrEmail, password) =>
+    request("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username_or_email: usernameOrEmail, password })
+    }),
+  currentUser: () => request("/auth/me"),
+  logout: () => request("/auth/logout", { method: "POST" }),
   summary: (intersectionId) => {
     const suffix =
       typeof intersectionId === "string" && intersectionId

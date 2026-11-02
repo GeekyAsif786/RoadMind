@@ -1,0 +1,5 @@
+# Test-only dependencies, installed on top of requirements.txt for CI and local
+# test runs. Not used by the Dockerfile, so none of these reach the production
+# image.
+pytest
+httpx==0.28.1

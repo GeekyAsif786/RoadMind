@@ -2,7 +2,8 @@ import {
   Activity,
   Ambulance,
   CircleGauge,
-  KeyRound,
+  CircleUserRound,
+  LogOut,
   MapPin,
   Plus,
   Radar,
@@ -11,11 +12,12 @@ import {
   TrafficCone,
   Zap
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import DetectionPanel from "./components/DetectionPanel.jsx";
 import EmergencyPanel from "./components/EmergencyPanel.jsx";
 import IntersectionPanel from "./components/IntersectionPanel.jsx";
+import LoginScreen, { loginErrorMessage } from "./components/LoginScreen.jsx";
 import MetricCard from "./components/MetricCard.jsx";
 import PcuCalculator from "./components/PcuCalculator.jsx";
 import PredictionPanel from "./components/PredictionPanel.jsx";
@@ -30,7 +32,125 @@ import {
 } from "./components/constants.js";
 import { api } from "./services/api.js";
 
+const SESSION_EXPIRED_MESSAGE = { type: "error", message: "Your session has expired. Sign in again." };
+
+function sessionErrorMessage(error) {
+  if (error.isForbidden) {
+    return "Your account is not permitted to use the RoadMind dashboard. Contact an administrator.";
+  }
+  if (error.status >= 500) {
+    return `The RoadMind backend returned a server error (HTTP ${error.status}) while checking your session. Try again shortly.`;
+  }
+  return loginErrorMessage(error);
+}
+
 export default function App() {
+  // "checking" until GET /auth/me answers, then "authenticated" or "anonymous".
+  const [auth, setAuth] = useState({ status: "checking", user: null });
+  const [authMessage, setAuthMessage] = useState(null);
+  // Network failures and 5xx responses may be transient, so the login screen
+  // offers a retry of the session check for those only.
+  const [sessionRetryable, setSessionRetryable] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
+
+  const restoreSession = useCallback(async () => {
+    try {
+      const user = await api.currentUser();
+      setAuthMessage(null);
+      setSessionRetryable(false);
+      setAuth({ status: "authenticated", user });
+    } catch (error) {
+      setAuth({ status: "anonymous", user: null });
+      if (error.isUnauthorized) {
+        setAuthMessage(null);
+        setSessionRetryable(false);
+        return;
+      }
+      const message = sessionErrorMessage(error);
+      // Keep the existing notice when a retry fails the same way, so it is not
+      // re-announced.
+      setAuthMessage((current) =>
+        current?.type === "error" && current.message === message ? current : { type: "error", message }
+      );
+      setSessionRetryable(Boolean(error.isNetworkError || error.status >= 500));
+    }
+  }, []);
+
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
+
+  const retrySession = useCallback(async () => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    try {
+      await restoreSession();
+    } finally {
+      retryingRef.current = false;
+      setRetrying(false);
+    }
+  }, [restoreSession]);
+
+  async function handleLogin(usernameOrEmail, password) {
+    const { user } = await api.login(usernameOrEmail, password);
+    setAuthMessage(null);
+    setSessionRetryable(false);
+    setAuth({ status: "authenticated", user });
+  }
+
+  async function handleLogout() {
+    try {
+      await api.logout();
+    } catch (error) {
+      // A 401 means the session is already gone; anything else means the
+      // server-side session may still be live, so stay signed in and report it.
+      if (!error.isUnauthorized) throw error;
+    }
+    setAuth({ status: "anonymous", user: null });
+    setAuthMessage({ type: "success", message: "You have signed out." });
+  }
+
+  // Called when a dashboard request returns 401. Not every 401 means the
+  // session ended (e.g. device-credential endpoints), so confirm with /auth/me.
+  const handleUnauthorized = useCallback(async () => {
+    try {
+      await api.currentUser();
+      return false;
+    } catch (error) {
+      if (!error.isUnauthorized) return false;
+      setAuth({ status: "anonymous", user: null });
+      setAuthMessage(SESSION_EXPIRED_MESSAGE);
+      return true;
+    }
+  }, []);
+
+  if (auth.status === "checking") {
+    return (
+      <main className="auth-shell">
+        <p className="auth-checking" role="status">
+          Checking session…
+        </p>
+      </main>
+    );
+  }
+
+  if (auth.status !== "authenticated") {
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        message={authMessage}
+        onRetry={sessionRetryable ? retrySession : null}
+        retrying={retrying}
+      />
+    );
+  }
+
+  return <Dashboard user={auth.user} onLogout={handleLogout} onUnauthorized={handleUnauthorized} />;
+}
+
+function Dashboard({ user, onLogout, onUnauthorized }) {
   const [summary, setSummary] = useState(emptySummary);
   const [intersections, setIntersections] = useState([]);
   const [selectedIntersection, setSelectedIntersection] = useState(
@@ -46,7 +166,6 @@ export default function App() {
   const [detectionWeather, setDetectionWeather] = useState("clear");
   const [detectionPcuTotal, setDetectionPcuTotal] = useState("");
   const [lastPredictions, setLastPredictions] = useState({});
-  const [apiKey, setApiKey] = useState(() => window.localStorage.getItem(api.apiKeyStorageKey) ?? "");
   const [predictionDirection, setPredictionDirection] = useState("ALL");
   const [predictionWeather, setPredictionWeather] = useState("clear");
   const [predictionPcuTotal, setPredictionPcuTotal] = useState("");
@@ -56,13 +175,17 @@ export default function App() {
   const [manualPcuTotal, setManualPcuTotal] = useState("");
   const [manualAvgSpeed, setManualAvgSpeed] = useState("");
 
+  // Last error message shown by background polling, so a persistent failure is
+  // reported once rather than every 15 seconds.
+  const pollErrorRef = useRef(null);
+
   const latestPlan = summary.signal_plans?.[0];
   const activeEmergencies = useMemo(
     () => summary.emergencies.filter((event) => event.status === "active"),
     [summary.emergencies]
   );
 
-  async function refresh(intersectionId = selectedIntersection) {
+  async function refresh(intersectionId = selectedIntersection, { background = false } = {}) {
     try {
       const [summaryPayload, intersectionsPayload] = await Promise.all([
         api.summary(intersectionId),
@@ -75,15 +198,25 @@ export default function App() {
         window.localStorage.setItem(SELECTED_INTERSECTION_KEY, intersectionsPayload[0].id);
       }
       setStatus("Live");
+      pollErrorRef.current = null;
     } catch (error) {
-      setStatus("Offline");
-      setNotice({ type: "error", message: error.message });
+      if (error.isUnauthorized && (await onUnauthorized())) return;
+      // Only a missing or failing backend is "Offline"; 401/403 come from a
+      // healthy backend that answered.
+      if (error.isNetworkError || error.status >= 500) {
+        setStatus("Offline");
+      }
+      const message = describeError(error, user);
+      if (!background || pollErrorRef.current !== message) {
+        setNotice({ type: "error", message });
+      }
+      pollErrorRef.current = message;
     }
   }
 
   useEffect(() => {
     refresh(selectedIntersection);
-    const timer = window.setInterval(() => refresh(selectedIntersection), 15000);
+    const timer = window.setInterval(() => refresh(selectedIntersection, { background: true }), 15000);
     return () => window.clearInterval(timer);
   }, [selectedIntersection]);
 
@@ -103,7 +236,8 @@ export default function App() {
       setNotice({ type: "success", message: success });
       await refresh();
     } catch (error) {
-      setNotice({ type: "error", message: error.message });
+      if (error.isUnauthorized && (await onUnauthorized())) return;
+      setNotice({ type: "error", message: describeError(error, user) });
     } finally {
       setBusy(false);
     }
@@ -144,21 +278,10 @@ export default function App() {
           <h1>Smart Traffic Optimization</h1>
         </div>
         <div className="topbar-actions">
-          <div className="api-key-field">
-            <KeyRound size={16} />
-            <input
-              type="password"
-              placeholder="API key"
-              value={apiKey}
-              onChange={(event) => {
-                setApiKey(event.target.value);
-                if (event.target.value) {
-                  window.localStorage.setItem(api.apiKeyStorageKey, event.target.value);
-                } else {
-                  window.localStorage.removeItem(api.apiKeyStorageKey);
-                }
-              }}
-            />
+          <div className="user-chip" title={user.email}>
+            <CircleUserRound size={16} aria-hidden="true" />
+            <span className="user-chip-name">{user.username}</span>
+            <span className="user-chip-role">{user.role}</span>
           </div>
           <select
             value={selectedIntersection}
@@ -185,6 +308,20 @@ export default function App() {
             aria-label="Refresh"
           >
             <RefreshCw size={18} />
+          </button>
+          <button
+            className="icon-button"
+            onClick={async () => {
+              try {
+                await onLogout();
+              } catch (error) {
+                setNotice({ type: "error", message: `Sign-out failed: ${describeError(error, user)}` });
+              }
+            }}
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </section>
@@ -319,6 +456,13 @@ export default function App() {
       />
     </main>
   );
+}
+
+function describeError(error, user) {
+  if (error.isForbidden) {
+    return `Your role (${user.role}) is not permitted to perform this action.`;
+  }
+  return error.message;
 }
 
 function ManualObservationForm({
